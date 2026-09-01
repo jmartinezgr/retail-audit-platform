@@ -2,7 +2,7 @@ from pydantic import BaseModel, Field
 
 
 class GenerateExcelRequest(BaseModel):
-    filas: int = Field(default=50, gt=0, le=1000)
+    filas: int = Field(default=1000, gt=0, le=50000)
     error_rate: float = Field(default=0.1, ge=0.0, le=1.0)
 
 

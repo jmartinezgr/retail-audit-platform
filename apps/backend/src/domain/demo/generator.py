@@ -8,6 +8,11 @@ regla de silver/gold (`domain/pipeline/silver.py`, `domain/rules/engine.py`)
 a propósito - para poder comparar "lo que se inyectó" contra "lo que gold
 detectó" después de subir el excel generado. Ver docs/DATA_MODEL.md.
 
+Pensado para generar miles de filas: los catálogos se convierten a listas
+de Python UNA sola vez (`_Prepared`) en vez de re-filtrar con Polars en
+cada fila - una llamada de `pl.DataFrame.filter()` por fila es barata en
+sí misma, pero miles de ellas en un loop de Python sí se notan.
+
 Nota honesta: el conteo es una aproximación por lo bajo, no un conteo
 exacto garantizado. Algunas mutaciones causan cascadas lógicas reales en
 otras reglas (ej. poner una sede inexistente también hace que
@@ -29,22 +34,43 @@ def _fmt(v) -> str:
     return "" if v is None else str(v)
 
 
-def _clean_row(i: int, catalogos: CatalogosSnapshot, rng: random.Random) -> dict:
-    sedes_activas = catalogos.sedes.filter(pl.col("activa")).to_dicts()
-    sede = rng.choice(sedes_activas)
+class _Prepared:
+    """Catálogos convertidos a listas/dicts de Python una sola vez, para
+    no repetir filtros de Polars en cada fila del loop."""
 
-    trabajadores_de_sede = (
-        catalogos.trabajadores.filter(
-            (pl.col("sede_codigo") == sede["codigo"]) & pl.col("activo")
-        ).to_dicts()
-    )
-    trabajador = (
-        rng.choice(trabajadores_de_sede)
-        if trabajadores_de_sede
-        else rng.choice(catalogos.trabajadores.to_dicts())
-    )
+    def __init__(self, catalogos: CatalogosSnapshot):
+        self.sedes_todas = catalogos.sedes.to_dicts()
+        self.sedes_por_codigo = {s["codigo"]: s for s in self.sedes_todas}
+        self.sedes_activas = [s for s in self.sedes_todas if s["activa"]]
+        self.sedes_inactivas = [s for s in self.sedes_todas if not s["activa"]]
 
-    producto = rng.choice(catalogos.productos.to_dicts())
+        trabajadores_todos = catalogos.trabajadores.to_dicts()
+        self.trabajadores_todos = trabajadores_todos
+        self.trabajadores_inactivos = [t for t in trabajadores_todos if not t["activo"]]
+        self.trabajadores_por_sede_activos: dict[str, list[dict]] = {}
+        for t in trabajadores_todos:
+            if t["activo"]:
+                self.trabajadores_por_sede_activos.setdefault(t["sede_codigo"], []).append(t)
+
+        self.productos = catalogos.productos.to_dicts()
+
+        self.codigos_descuento = catalogos.codigos_descuento.to_dicts()
+        hoy = date.today()
+        self.codigos_vencidos = [c for c in self.codigos_descuento if c["vigencia_fin"] < hoy]
+        self.codigos_con_sede_vigentes_hoy = [
+            c
+            for c in self.codigos_descuento
+            if c["sede_codigo"] is not None and c["vigencia_inicio"] <= hoy <= c["vigencia_fin"]
+        ]
+
+
+def _clean_row(i: int, prep: _Prepared, rng: random.Random) -> dict:
+    sede = rng.choice(prep.sedes_activas)
+
+    trabajadores_de_sede = prep.trabajadores_por_sede_activos.get(sede["codigo"])
+    trabajador = rng.choice(trabajadores_de_sede) if trabajadores_de_sede else rng.choice(prep.trabajadores_todos)
+
+    producto = rng.choice(prep.productos)
 
     cantidad = rng.randint(1, 8)
     precio_unitario = producto["precio_lista"]
@@ -56,17 +82,18 @@ def _clean_row(i: int, catalogos: CatalogosSnapshot, rng: random.Random) -> dict
 
     # vigente en la FECHA DE LA VENTA, no en la fecha de hoy - si no, una
     # fila "limpia" puede quedar con un descuento que ya no aplicaba ese día
-    codigos_vigentes = catalogos.codigos_descuento.filter(
-        (pl.col("vigencia_inicio") <= fecha)
-        & (pl.col("vigencia_fin") >= fecha)
-        & (pl.col("sede_codigo").is_null() | (pl.col("sede_codigo") == sede["codigo"]))
-    ).to_dicts()
+    codigos_vigentes = [
+        c
+        for c in prep.codigos_descuento
+        if c["vigencia_inicio"] <= fecha <= c["vigencia_fin"]
+        and (c["sede_codigo"] is None or c["sede_codigo"] == sede["codigo"])
+    ]
     codigo = rng.choice(codigos_vigentes) if codigos_vigentes and rng.random() < 0.4 else None
 
     total = cantidad * precio_unitario - _descuento_valor(codigo, cantidad, precio_unitario)
 
     return {
-        "numero_factura": f"FAC-{i:05d}",
+        "numero_factura": f"FAC-{i:07d}",
         "fecha": fecha.isoformat(),
         "sede_codigo": sede["codigo"],
         "trabajador_codigo": trabajador["codigo"],
@@ -91,74 +118,72 @@ def _descuento_valor(codigo: dict | None, cantidad: float, precio_unitario: floa
 # violación inyectada, o None si el catálogo no tiene datos para inyectarla
 # (ej. no hay sedes inactivas) - en ese caso se prueba con otro mutador.
 
-def _mut_numero_factura_vacio(row, catalogos, rng, previas):
+def _mut_numero_factura_vacio(row, prep, rng, previas):
     row = dict(row)
     row["numero_factura"] = ""
     return row
 
 
-def _mut_fecha_invalida(row, catalogos, rng, previas):
+def _mut_fecha_invalida(row, prep, rng, previas):
     row = dict(row)
     row["fecha"] = "2026-13-45"
     return row
 
 
-def _mut_cantidad_invalida(row, catalogos, rng, previas):
+def _mut_cantidad_invalida(row, prep, rng, previas):
     row = dict(row)
     row["cantidad"] = rng.choice(["-3", "2.5", "0"])
     return row
 
 
-def _mut_precio_unitario_invalido(row, catalogos, rng, previas):
+def _mut_precio_unitario_invalido(row, prep, rng, previas):
     row = dict(row)
     row["precio_unitario"] = "no-es-un-numero"
     return row
 
 
-def _mut_total_invalido(row, catalogos, rng, previas):
+def _mut_total_invalido(row, prep, rng, previas):
     row = dict(row)
     row["total"] = "-100"
     return row
 
 
-def _mut_metodo_pago_no_reconocido(row, catalogos, rng, previas):
+def _mut_metodo_pago_no_reconocido(row, prep, rng, previas):
     row = dict(row)
     row["metodo_pago"] = "BITCOIN"
     return row
 
 
-def _mut_sede_existe(row, catalogos, rng, previas):
+def _mut_sede_existe(row, prep, rng, previas):
     row = dict(row)
     row["sede_codigo"] = "TDA-999"
     return row
 
 
-def _mut_sede_activa(row, catalogos, rng, previas):
-    inactivas = catalogos.sedes.filter(~pl.col("activa")).to_dicts()
-    if not inactivas:
+def _mut_sede_activa(row, prep, rng, previas):
+    if not prep.sedes_inactivas:
         return None
     row = dict(row)
-    row["sede_codigo"] = rng.choice(inactivas)["codigo"]
+    row["sede_codigo"] = rng.choice(prep.sedes_inactivas)["codigo"]
     return row
 
 
-def _mut_trabajador_existe(row, catalogos, rng, previas):
+def _mut_trabajador_existe(row, prep, rng, previas):
     row = dict(row)
     row["trabajador_codigo"] = "EMP-9999"
     return row
 
 
-def _mut_trabajador_activo(row, catalogos, rng, previas):
-    inactivos = catalogos.trabajadores.filter(~pl.col("activo")).to_dicts()
-    if not inactivos:
+def _mut_trabajador_activo(row, prep, rng, previas):
+    if not prep.trabajadores_inactivos:
         return None
     row = dict(row)
-    row["trabajador_codigo"] = rng.choice(inactivos)["codigo"]
+    row["trabajador_codigo"] = rng.choice(prep.trabajadores_inactivos)["codigo"]
     return row
 
 
-def _mut_trabajador_pertenece_a_sede(row, catalogos, rng, previas):
-    otras = catalogos.sedes.filter(pl.col("codigo") != row["sede_codigo"]).to_dicts()
+def _mut_trabajador_pertenece_a_sede(row, prep, rng, previas):
+    otras = [s for s in prep.sedes_todas if s["codigo"] != row["sede_codigo"]]
     if not otras:
         return None
     row = dict(row)
@@ -166,13 +191,13 @@ def _mut_trabajador_pertenece_a_sede(row, catalogos, rng, previas):
     return row
 
 
-def _mut_producto_existe(row, catalogos, rng, previas):
+def _mut_producto_existe(row, prep, rng, previas):
     row = dict(row)
     row["producto_sku"] = "NOEX-9999"
     return row
 
 
-def _mut_codigo_descuento_existe(row, catalogos, rng, previas):
+def _mut_codigo_descuento_existe(row, prep, rng, previas):
     row = dict(row)
     row["codigo_descuento"] = "NOEXISTE2099"
     # sin código real, el motor asume descuento 0 - recalculamos para que
@@ -181,26 +206,18 @@ def _mut_codigo_descuento_existe(row, catalogos, rng, previas):
     return row
 
 
-def _mut_codigo_descuento_vigente(row, catalogos, rng, previas):
-    hoy = date.today()
-    vencidos = catalogos.codigos_descuento.filter(pl.col("vigencia_fin") < hoy).to_dicts()
-    if not vencidos:
+def _mut_codigo_descuento_vigente(row, prep, rng, previas):
+    if not prep.codigos_vencidos:
         return None
     row = dict(row)
-    codigo = rng.choice(vencidos)
+    codigo = rng.choice(prep.codigos_vencidos)
     row["codigo_descuento"] = codigo["codigo"]
     row["total"] = _fmt(_recompute_total(row, codigo))
     return row
 
 
-def _mut_codigo_descuento_aplica_a_sede(row, catalogos, rng, previas):
-    hoy = date.today()
-    de_otra_sede = catalogos.codigos_descuento.filter(
-        pl.col("sede_codigo").is_not_null()
-        & (pl.col("sede_codigo") != row["sede_codigo"])
-        & (pl.col("vigencia_inicio") <= hoy)
-        & (pl.col("vigencia_fin") >= hoy)
-    ).to_dicts()
+def _mut_codigo_descuento_aplica_a_sede(row, prep, rng, previas):
+    de_otra_sede = [c for c in prep.codigos_con_sede_vigentes_hoy if c["sede_codigo"] != row["sede_codigo"]]
     if not de_otra_sede:
         return None
     row = dict(row)
@@ -216,13 +233,13 @@ def _recompute_total(row: dict, codigo: dict) -> float:
     return cantidad * precio - _descuento_valor(codigo, cantidad, precio)
 
 
-def _mut_factura_cuadra(row, catalogos, rng, previas):
+def _mut_factura_cuadra(row, prep, rng, previas):
     row = dict(row)
     row["total"] = _fmt(float(row["total"]) + 99999)
     return row
 
 
-def _mut_margen_no_negativo(row, catalogos, rng, previas):
+def _mut_margen_no_negativo(row, prep, rng, previas):
     row = dict(row)
     precio_bajo = 1.0
     cantidad = float(row["cantidad"])
@@ -232,20 +249,20 @@ def _mut_margen_no_negativo(row, catalogos, rng, previas):
     return row
 
 
-def _mut_fecha_no_futura(row, catalogos, rng, previas):
+def _mut_fecha_no_futura(row, prep, rng, previas):
     row = dict(row)
     row["fecha"] = (date.today() + timedelta(days=rng.randint(5, 60))).isoformat()
     return row
 
 
-def _mut_fecha_posterior_a_apertura(row, catalogos, rng, previas):
-    sede = catalogos.sedes.filter(pl.col("codigo") == row["sede_codigo"]).to_dicts()[0]
+def _mut_fecha_posterior_a_apertura(row, prep, rng, previas):
+    sede = prep.sedes_por_codigo[row["sede_codigo"]]
     row = dict(row)
     row["fecha"] = (sede["fecha_apertura"] - timedelta(days=rng.randint(5, 60))).isoformat()
     return row
 
 
-def _mut_factura_no_duplicada(row, catalogos, rng, previas):
+def _mut_factura_no_duplicada(row, prep, rng, previas):
     if not previas:
         return None
     row = dict(row)
@@ -253,7 +270,7 @@ def _mut_factura_no_duplicada(row, catalogos, rng, previas):
     return row
 
 
-def _mut_cantidad_dentro_de_transferencias(row, catalogos, rng, previas):
+def _mut_cantidad_dentro_de_transferencias(row, prep, rng, previas):
     row = dict(row)
     row["cantidad"] = _fmt(999999)
     row["codigo_descuento"] = ""
@@ -296,18 +313,19 @@ def generar_ventas(
     probabilidad `error_rate` de recibir UNA violación inyectada. `seed`
     es opcional - sin él, cada llamada genera datos distintos."""
     rng = random.Random(seed)
+    prep = _Prepared(catalogos)
     conteo: dict[str, int] = {}
     previas: list[str] = []
     generadas: list[dict] = []
 
     for i in range(1, filas + 1):
-        row = _clean_row(i, catalogos, rng)
+        row = _clean_row(i, prep, rng)
 
         if rng.random() < error_rate:
             candidatos = list(MUTADORES)
             rng.shuffle(candidatos)
             for tipo, mutador in candidatos:
-                mutado = mutador(row, catalogos, rng, previas)
+                mutado = mutador(row, prep, rng, previas)
                 if mutado is not None:
                     row = mutado
                     conteo[tipo] = conteo.get(tipo, 0) + 1
