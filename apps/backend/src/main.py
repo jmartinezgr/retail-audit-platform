@@ -5,6 +5,13 @@ from src.infrastructure.db.session import engine
 # IMPORTANTE:
 # Importar modelos para que SQLAlchemy los detecte
 from src.infrastructure.db.uploads.models import UploadModel
+from src.infrastructure.db.catalog.models import (
+    SedeModel,
+    TrabajadorModel,
+    ProductoModel,
+    CodigoDescuentoModel,
+    TransferenciaModel,
+)
 from src.api.uploads.router import router as uploads_router
 
 app = FastAPI(title="Retail Audit Platform - Backend")
