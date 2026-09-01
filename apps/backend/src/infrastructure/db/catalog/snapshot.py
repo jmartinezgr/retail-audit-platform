@@ -29,7 +29,10 @@ def load_catalog_snapshot(db: Session) -> CatalogosSnapshot:
         ]
     )
     productos = pl.DataFrame(
-        [{"sku": p.sku, "costo": p.costo} for p in repo.list_productos()]
+        [
+            {"sku": p.sku, "costo": p.costo, "precio_lista": p.precio_lista}
+            for p in repo.list_productos()
+        ]
     )
     codigos_descuento = pl.DataFrame(
         [

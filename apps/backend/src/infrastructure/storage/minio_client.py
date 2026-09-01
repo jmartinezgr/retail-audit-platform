@@ -1,3 +1,6 @@
+from datetime import timedelta
+from io import BytesIO
+
 from minio import Minio
 
 from src.infrastructure.config.settings import settings
@@ -28,3 +31,24 @@ def get_object_bytes(object_name: str) -> bytes:
     finally:
         response.close()
         response.release_conn()
+
+
+def put_object_bytes(object_name: str, data: bytes, content_type: str) -> None:
+    """Sube bytes directo al bucket (sin URL prefirmada - uso server-side)."""
+    client = get_minio_client()
+    client.put_object(
+        settings.MINIO_BUCKET,
+        object_name,
+        BytesIO(data),
+        length=len(data),
+        content_type=content_type,
+    )
+
+
+def get_presigned_download_url(object_name: str, expires_minutes: int = 30) -> str:
+    client = get_minio_client()
+    return client.presigned_get_object(
+        settings.MINIO_BUCKET,
+        object_name,
+        expires=timedelta(minutes=expires_minutes),
+    )
