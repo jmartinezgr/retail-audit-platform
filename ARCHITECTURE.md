@@ -85,6 +85,23 @@ Implementaciones concretas, sin lógica de negocio.
   DuckDB sobre las tablas Delta (lo que consume `api/` para servir
   resultados paginados/filtrados, cuando exista `gold`).
 
+#### Convención de rutas en el bucket
+
+```
+jobs/{upload_id}/
+  upload/{filename}   ← archivo crudo tal cual se subió (no es Delta)
+  bronze/              ← tabla Delta (domain/pipeline/bronze.py)
+  silver/               ← tabla Delta (pendiente)
+  gold/                 ← tabla Delta (pendiente)
+```
+
+`upload/` guarda el archivo tal cual; `bronze/silver/gold` son cada una
+directamente una tabla Delta (con su propio `_delta_log/`), al mismo nivel
+— nada anidado bajo una carpeta `delta/` genérica. La ruta de `upload/` la
+arma `api/uploads/service.py` y queda guardada en `UploadModel.object_name`;
+las de `bronze/silver/gold` las arma cada `service.py` de `api/` que las
+necesite (hoy solo `api/audits/service.py._bronze_key`).
+
 ### `api/` — la única capa que sabe que existe HTTP
 
 Una subcarpeta por feature, cada una con:
@@ -134,3 +151,8 @@ la app en producción (ej. `seed_catalog.py`). Se ejecutan con
   `infrastructure/storage/lake.py`, `api/audits/` (primer tramo del
   pipeline, corre en background). `UploadModel` ahora guarda `object_name`
   explícito en vez de reconstruir la ruta a mano.
+- **2026-09-01**: corregida la convención de rutas del bucket — el archivo
+  crudo pasó de `jobs/{id}/bronze/{filename}` a `jobs/{id}/upload/{filename}`,
+  y la tabla Delta de `jobs/{id}/delta/bronze` a `jobs/{id}/bronze` — para
+  que `upload/bronze/silver/gold` queden como hermanos al mismo nivel, sin
+  que "bronze" signifique dos cosas distintas.

@@ -194,10 +194,12 @@ validar nada) + `infrastructure/storage/lake.py` (`write_delta()` /
 que funcione contra MinIO) + `api/audits/` (`POST /audits/{id}/run`
 dispara el pipeline en background vía `BackgroundTasks` sin bloquear la
 respuesta; `GET /audits/{id}/bronze` para consultar el resultado).
-Probado end-to-end: excel de 3 filas → tabla Delta real en
-`jobs/{id}/delta/bronze/` (con su `_delta_log/` — se verificó que es Delta
-de verdad, no un parquet suelto). `UploadModel` ahora guarda `object_name`
-explícito (antes se reconstruía la ruta a mano en dos sitios).
+Probado end-to-end: excel de 3 filas → tabla Delta real en `jobs/{id}/bronze/`
+(con su `_delta_log/` — se verificó que es Delta de verdad, no un parquet
+suelto). El archivo crudo vive aparte, en `jobs/{id}/upload/{filename}` —
+`upload/bronze/silver/gold` quedan como hermanos al mismo nivel (ver
+convención de rutas en `ARCHITECTURE.md`). `UploadModel` ahora guarda
+`object_name` explícito (antes se reconstruía la ruta a mano en dos sitios).
 `scripts/make_sample_excel.py` genera un excel de prueba mínimo con
 códigos reales del catálogo — no es el generador sintético de la fase 5
 (ese inyecta errores a propósito), solo un fixture para probar el pipeline

@@ -25,7 +25,7 @@ class UploadService:
     def request_upload_url(self, filename: str) -> dict[str, str]:
         """Generar URL presignada para upload"""
         upload_id = str(uuid.uuid4())
-        object_name = f"jobs/{upload_id}/bronze/{filename}"
+        object_name = f"jobs/{upload_id}/upload/{filename}"
 
         # Genera URL presignada
         upload_url = self.minio.presigned_put_object(

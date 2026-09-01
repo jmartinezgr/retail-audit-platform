@@ -13,7 +13,7 @@ from src.infrastructure.storage.minio_client import get_object_bytes
 
 
 def _bronze_key(upload_id: str) -> str:
-    return f"jobs/{upload_id}/delta/bronze"
+    return f"jobs/{upload_id}/bronze"
 
 
 class AuditService:
