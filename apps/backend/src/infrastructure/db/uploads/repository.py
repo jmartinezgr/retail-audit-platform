@@ -15,10 +15,16 @@ class UploadRepository:
         self.db = db
 
     def save(
-        self, upload_id: str, filename: str, status: str = UploadStatus.REQUESTED
+        self,
+        upload_id: str,
+        filename: str,
+        object_name: str,
+        status: str = UploadStatus.REQUESTED,
     ) -> UploadModel:
         """Guarda un nuevo upload"""
-        upload = UploadModel(id=upload_id, filename=filename, status=status)
+        upload = UploadModel(
+            id=upload_id, filename=filename, object_name=object_name, status=status
+        )
         self.db.add(upload)
         self.db.commit()
         self.db.refresh(upload)

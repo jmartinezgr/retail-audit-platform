@@ -35,7 +35,7 @@ class UploadService:
         )
 
         # Guarda en BD
-        self.repo.save(upload_id, filename, UploadStatus.REQUESTED)
+        self.repo.save(upload_id, filename, object_name, UploadStatus.REQUESTED)
 
         return {
             "upload_url": upload_url,

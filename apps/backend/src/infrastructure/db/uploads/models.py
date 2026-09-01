@@ -13,5 +13,6 @@ class UploadModel(Base):
 
     id: Mapped[str] = mapped_column(primary_key=True)
     filename: Mapped[str]
+    object_name: Mapped[str]
     status: Mapped[str] = mapped_column(default=UploadStatus.REQUESTED.value)
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
