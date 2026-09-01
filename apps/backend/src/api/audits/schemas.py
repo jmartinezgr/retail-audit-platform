@@ -8,8 +8,8 @@ class RunAuditResponse(BaseModel):
     status: str
 
 
-class BronzePreviewResponse(BaseModel):
-    """Preview de la tabla bronze resultante"""
+class LayerPreviewResponse(BaseModel):
+    """Preview de una tabla del pipeline (bronze/silver/gold)"""
 
     upload_id: str
     row_count: int
