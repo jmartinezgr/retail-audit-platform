@@ -139,7 +139,12 @@ def _evaluar(df: pl.DataFrame, hoy: date) -> list[pl.DataFrame]:
         _resultado(df, "producto_existe", Severidad.ERROR, producto_existe, "el producto no existe en el catálogo")
     )
 
-    tiene_descuento = pl.col("codigo_descuento").is_not_null()
+    # "" cuenta como "sin descuento" igual que null (documentado en
+    # DATA_MODEL.md) - normalmente un excel real ya llega con null en vez
+    # de "" para una celda vacía, pero no hay que depender de eso
+    tiene_descuento = pl.col("codigo_descuento").is_not_null() & (
+        pl.col("codigo_descuento").str.strip_chars() != ""
+    )
     sin_descuento_msg = "OK (sin código de descuento)"
 
     descuento_existe = ~tiene_descuento | pl.col("_descuento_tipo").is_not_null()
