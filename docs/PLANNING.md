@@ -203,11 +203,25 @@ convención de rutas en `ARCHITECTURE.md`). `UploadModel` ahora guarda
 `scripts/make_sample_excel.py` genera un excel de prueba mínimo con
 códigos reales del catálogo — no es el generador sintético de la fase 5
 (ese inyecta errores a propósito), solo un fixture para probar el pipeline
-a mano.
+a mano. `scripts/inspect_delta.py <object_key>` para leer cualquier tabla
+Delta desde la terminal sin pasar por la API.
+
+**Pipeline silver — hecho** (2026-09-01): `domain/ventas.py` (esquema de
+`Venta`: `MetodoPago` + columnas requeridas/opcionales — documentado en
+detalle en `docs/DATA_MODEL.md`) + `domain/pipeline/silver.py`
+(`to_silver()`, pura — tipa cada columna, marca filas inválidas en
+`_errores`/`_es_valida` sin descartarlas; si faltan columnas obligatorias
+por completo lanza `SilverSchemaError` en vez de intentarlo fila por fila).
+Encadenado en `AuditService.run_pipeline` (bronze → silver); nuevo
+`GET /audits/{id}/silver`. Probado con datos rotos a propósito (factura
+vacía, fecha inválida, cantidad negativa/no entera, método de pago
+inventado) — cada error se detecta individualmente y la fila queda
+marcada, no descartada.
 
 Falta (todo lo demás), y dónde va cada cosa según `ARCHITECTURE.md`:
-- `domain/pipeline/silver.py`, `gold.py` — tipado/validación estructural
-  (silver) y motor de reglas + tabla de auditoría (gold).
+- `domain/pipeline/gold.py` — motor de reglas + tabla de auditoría, contra
+  silver + los catálogos (existencia, vigencias, márgenes, cuadre de
+  totales — ver §4 de este documento y `docs/DATA_MODEL.md`).
 - `domain/rules/` — motor de reglas: reglas estáticas en código + reglas
   dinámicas cargadas de una tabla `rule_definitions` (JSONLogic o DSL
   propio, leída vía `infrastructure/db/`).

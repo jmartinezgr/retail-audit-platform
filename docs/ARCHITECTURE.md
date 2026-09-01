@@ -1,8 +1,10 @@
 # Arquitectura del backend
 
-> Complementa a `PLANNING.md` (qué se construye y por qué, producto/roadmap).
-> Este documento es sobre **cómo se organiza el código**. Se actualiza cada
-> vez que se agrega un módulo nuevo o se toma una decisión estructural.
+> Complementa a `PLANNING.md` (qué se construye y por qué, producto/roadmap)
+> y a `DATA_MODEL.md` (qué forma tienen los datos: entidades, esquema de
+> entrada/salida de cada capa). Este documento es sobre **cómo se organiza
+> el código**. Se actualiza cada vez que se agrega un módulo nuevo o se
+> toma una decisión estructural.
 
 ## El patrón: capas por responsabilidad técnica, no por feature
 
@@ -48,8 +50,18 @@ en memoria, nunca leyendo/escribiendo directo a storage.
 - `pipeline/bronze.py` — `to_bronze(file_bytes: bytes) -> pl.DataFrame`:
   recibe los bytes crudos del excel (no una ruta ni un objeto de storage,
   para que sea testeable sin MinIO) y devuelve todas las columnas como
-  texto (`pl.Utf8`), sin tipar ni validar nada. *(pendiente)* `silver.py`,
-  `gold.py`.
+  texto (`pl.Utf8`), sin tipar ni validar nada.
+- `pipeline/silver.py` — `to_silver(bronze_df: pl.DataFrame) -> pl.DataFrame`:
+  tipa cada columna contra el esquema de `Venta` (`domain/ventas.py`) y
+  agrega `_errores: List[Utf8]` / `_es_valida: bool` por fila. Ninguna fila
+  se descarta. Si faltan columnas obligatorias por completo, lanza
+  `SilverSchemaError` en vez de intentar procesar fila por fila — eso es un
+  archivo mal formado, no una fila con datos sucios. Esquema completo en
+  `DATA_MODEL.md`. *(pendiente)* `gold.py`.
+- `ventas.py` — `MetodoPago` (enum) + `VENTA_COLUMNAS_REQUERIDAS` /
+  `VENTA_COLUMNAS_OPCIONALES`: el contrato de columnas que se espera del
+  excel. Es la fuente de verdad que usa `silver.py` — `DATA_MODEL.md` lo
+  documenta en formato humano/diagrama, pero el código manda si difieren.
 
 ### Convención en `pipeline/`: qué es "puro" acá
 
@@ -91,7 +103,7 @@ Implementaciones concretas, sin lógica de negocio.
 jobs/{upload_id}/
   upload/{filename}   ← archivo crudo tal cual se subió (no es Delta)
   bronze/              ← tabla Delta (domain/pipeline/bronze.py)
-  silver/               ← tabla Delta (pendiente)
+  silver/               ← tabla Delta (domain/pipeline/silver.py)
   gold/                 ← tabla Delta (pendiente)
 ```
 
@@ -114,14 +126,16 @@ Una subcarpeta por feature, cada una con:
 Ya existe:
 - `api/uploads/` — subir excel → URL prefirmada de MinIO → registro en
   Postgres (guarda `object_name` explícito) → consultar estado.
-- `api/audits/` — `POST /audits/{upload_id}/run` dispara el pipeline con
-  `BackgroundTasks` de FastAPI (no bloquea la respuesta; el `db: Session`
-  inyectado por `Depends` sigue vivo durante la tarea de fondo porque
-  FastAPI corre las background tasks *antes* del cierre de dependencias
-  `yield` — por diseño, no por casualidad). `GET /audits/{upload_id}/bronze`
-  lee la tabla Delta resultante y la devuelve como preview JSON. Hoy solo
-  corre `bronze()`; cuando existan `silver()`/`gold()` se encadenan en el
-  mismo `AuditService.run_bronze` (o se renombra a algo como `run_pipeline`).
+- `api/audits/` — `POST /audits/{upload_id}/run` dispara `AuditService.run_pipeline`
+  (bronze → silver, encadenados) con `BackgroundTasks` de FastAPI (no
+  bloquea la respuesta; el `db: Session` inyectado por `Depends` sigue vivo
+  durante la tarea de fondo porque FastAPI corre las background tasks
+  *antes* del cierre de dependencias `yield` — por diseño, no por
+  casualidad). `GET /audits/{upload_id}/bronze` y
+  `GET /audits/{upload_id}/silver` leen la tabla Delta correspondiente y la
+  devuelven como preview JSON (`LayerPreviewResponse`, genérico para
+  cualquier capa). Cuando exista `gold()` se encadena en el mismo
+  `run_pipeline`.
 
 Pendiente: `api/catalog/` (CRUD de sedes/trabajadores/productos/etc., solo
 si la fase de reglas dinámicas editables lo necesita).
@@ -156,3 +170,9 @@ la app en producción (ej. `seed_catalog.py`). Se ejecutan con
   y la tabla Delta de `jobs/{id}/delta/bronze` a `jobs/{id}/bronze` — para
   que `upload/bronze/silver/gold` queden como hermanos al mismo nivel, sin
   que "bronze" signifique dos cosas distintas.
+- **2026-09-01**: agregado `domain/ventas.py` (esquema de `Venta`) +
+  `domain/pipeline/silver.py`, encadenado en `AuditService.run_pipeline`
+  (antes `run_bronze`). Documentación movida a `docs/` (`PLANNING.md`,
+  `ARCHITECTURE.md`) y agregado `docs/DATA_MODEL.md` (entidades, esquema de
+  entrada/salida por capa, diagrama de clases). `CLAUDE.md` se queda en la
+  raíz — es donde Claude Code lo carga automático.
