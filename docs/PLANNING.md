@@ -245,7 +245,10 @@ catálogos reales sembrados, e inyecta con probabilidad `error_rate`
 **una** violación por fila desde un pool de 21 mutadores — uno por cada
 regla de silver/gold, con el mismo nombre exacto (`sede_existe`,
 `factura_cuadra`, etc.) para poder comparar "lo inyectado" contra "lo que
-gold detectó" después de subir el archivo. `POST /demo/generate-excel`
+gold detectó" después de subir el archivo. Soporta hasta 50,000 filas por
+llamada (`filas` en el request, tope validado en el schema) — el hot path
+por fila no llama a Polars (todo precomputado una vez en `_Prepared`
+dentro del generador), 20,000 filas se generan en ~0.6s. `POST /demo/generate-excel`
 (`api/demo/`) sube el excel a `demo/` en el bucket (no crea un registro de
 upload — eso lo decide el usuario subiéndolo por el flujo normal) y
 devuelve una URL de descarga prefirmada + el detalle de qué se inyectó.
