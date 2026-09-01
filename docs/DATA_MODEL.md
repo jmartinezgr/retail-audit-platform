@@ -185,6 +185,17 @@ Delta + el estado **actual** de los catálogos en Postgres (`POST
 /audits/{id}/run-gold`, ver `ARCHITECTURE.md`). Útil para re-auditar
 después de corregir algo en un catálogo.
 
+**Generador sintético**: `domain/demo/generator.py` (`POST
+/demo/generate-excel`) inyecta violaciones usando estos mismos nombres de
+regla (más 6 tipos a nivel silver: `numero_factura_vacio`,
+`fecha_invalida`, `cantidad_invalida`, `precio_unitario_invalido`,
+`total_invalido`, `metodo_pago_no_reconocido`) — así el reporte de "qué se
+inyectó" se puede comparar directo contra la columna `regla` de gold. El
+conteo inyectado es una aproximación por lo bajo: algunas mutaciones
+cascadean a otras reglas de forma legítima (ej. una sede inexistente
+también hace fallar `trabajador_pertenece_a_sede`), así que gold puede
+detectar más de lo que el generador contó — eso es correcto, no un bug.
+
 ## Convención de rutas del pipeline en el bucket
 
 Ver `ARCHITECTURE.md` → "Convención de rutas en el bucket"

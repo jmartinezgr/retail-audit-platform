@@ -238,16 +238,47 @@ detectó una inconsistencia real en el excel de prueba (un empleado
 puesto a mano en la sede equivocada) — se corrigió el fixture, no la
 regla, buena señal de que el motor funciona.
 
+**Generador sintético — hecho** (2026-09-01): `domain/demo/generator.py`
+(`generar_ventas()`, pura salvo el uso de `random`/`date.today()` con
+`seed` opcional para tests deterministas) construye filas contra los
+catálogos reales sembrados, e inyecta con probabilidad `error_rate`
+**una** violación por fila desde un pool de 21 mutadores — uno por cada
+regla de silver/gold, con el mismo nombre exacto (`sede_existe`,
+`factura_cuadra`, etc.) para poder comparar "lo inyectado" contra "lo que
+gold detectó" después de subir el archivo. `POST /demo/generate-excel`
+(`api/demo/`) sube el excel a `demo/` en el bucket (no crea un registro de
+upload — eso lo decide el usuario subiéndolo por el flujo normal) y
+devuelve una URL de descarga prefirmada + el detalle de qué se inyectó.
+
+Dos bugs reales que salieron al validar el generador contra datos
+sembrados de verdad (no del generador en sí, de las piezas de abajo):
+- `codigo_descuento_vigente` comparaba contra "hoy" en vez de contra la
+  fecha de la venta — corregido en el generador.
+- `cantidad_dentro_de_transferencias` disparaba en el 74% de filas
+  *limpias* porque solo 250 transferencias cubrían de verdad ~25% de las
+  840 combinaciones sede×producto posibles — corregido en
+  `scripts/seed_catalog.py` (ahora hay una transferencia base garantizada
+  por cada combinación, 840 + 200 extra).
+- Bonus: `codigo_descuento_existe` fallaba para filas sin ningún
+  descuento cuando el valor era `""` en vez de `null` — el excel real
+  nunca llega así (una celda vacía se lee como `null`), pero el motor
+  debía tratarlos igual de todas formas, según lo documentado en
+  `DATA_MODEL.md`. Corregido en `domain/rules/engine.py`.
+
+Nota honesta (documentada en el propio generador): el conteo de errores
+inyectados es una aproximación por lo bajo — algunas mutaciones causan
+cascadas lógicas reales en otras reglas (ej. una sede inexistente también
+hace fallar `trabajador_pertenece_a_sede`), así que gold puede detectar
+más violaciones de las que el generador contó. Verificado end-to-end
+varias veces: cada discrepancia rastreada resultó ser una cascada real,
+no un bug.
+
 Falta (todo lo demás):
 - Reglas **dinámicas** (JSONLogic/DSL + tabla `rule_definitions`
   editable desde frontend) — fase 7, ver §4.
 - Tabla `jobs` (o reusar `uploads` con más estados) para que el frontend
   haga polling de progreso más granular que solo
   REQUESTED→UPLOADED→PROCESSING→COMPLETED/FAILED.
-- `api/demo/generate-excel` — endpoint que genera un excel sintético de
-  ventas con un parámetro `error_rate` que inyecta a propósito violaciones
-  de cada regla (para que la demo se explique sola: "genera un excel,
-  súbelo, mira los errores que detectó").
 
 ## 7. Frontend — pantallas
 
@@ -294,8 +325,8 @@ Script Python (Faker + numpy) que:
 2. ✅ Catálogos maestros + seed data.
 3. ✅ Capa bronze + silver (parseo/tipado, sin reglas de negocio aún).
 4. ✅ Motor de reglas estáticas + capa gold + endpoint para consultar resultados.
-5. Generador de excels sintéticos con `error_rate` — **siguiente**.
-6. Frontend: subir, ver progreso, ver tabla de auditoría.
+5. ✅ Generador de excels sintéticos con `error_rate`.
+6. Frontend: subir, ver progreso, ver tabla de auditoría — **siguiente**.
 7. Reglas dinámicas editables (si alcanza el tiempo).
 8. Deploy en capas gratuitas, ajustar si hace falta el VPS de $5.
 

@@ -72,6 +72,13 @@ en memoria, nunca leyendo/escribiendo directo a storage.
   delgado a propósito, solo llama a `rules.engine.evaluar()`. `hoy` es
   inyectable (default `date.today()`) para que los tests sean
   deterministas sin mockear el reloj del sistema.
+- `demo/generator.py` — `generar_ventas(catalogos, filas, error_rate, seed=None) -> (pl.DataFrame, dict[str,int])`:
+  fila "limpia" contra `catalogos` + probabilidad `error_rate` de aplicar
+  UN mutador (21 disponibles, uno por cada regla de silver/gold, mismo
+  nombre exacto) — devuelve las filas generadas y un conteo por tipo de
+  violación inyectada. `seed` opcional para reproducibilidad en tests.
+  `random`/`date.today()` la hacen "pura salvo por eso", igual que
+  `bronze()`/`gold()` — ver convención abajo.
 
 ### Convención en `pipeline/`: qué es "puro" acá
 
@@ -96,7 +103,9 @@ Implementaciones concretas, sin lógica de negocio.
   `ProductoModel`, `CodigoDescuentoModel`, `TransferenciaModel` con
   `ForeignKey` reales entre sí).
 - `storage/minio_client.py` — cliente de MinIO/S3 (`get_minio_client`,
-  `get_object_bytes`).
+  `get_object_bytes`, `put_object_bytes` para subir bytes directo
+  server-side sin URL prefirmada, `get_presigned_download_url` para
+  dar una URL de descarga temporal — usados por `api/demo/`).
 - `storage/lake.py` — `write_delta()` / `read_delta()`: Polars + `deltalake`
   contra el bucket S3-compatible. `storage_options` incluye
   `AWS_ALLOW_HTTP` y `AWS_S3_ALLOW_UNSAFE_RENAME` porque MinIO (y S3
@@ -108,7 +117,8 @@ Implementaciones concretas, sin lógica de negocio.
   `pl.DataFrame` — el único lugar donde SQLAlchemy y `domain/rules`
   se tocan. Se lee EN VIVO cada vez que se llama, sin cachear — es
   justo lo que permite re-ejecutar `gold` después de cambiar algo en un
-  catálogo sin tocar bronze/silver.
+  catálogo sin tocar bronze/silver. También la usa `api/demo/` para que
+  el generador construya filas con datos reales.
 - *(pendiente)* `storage/duckdb_query.py` — helpers para correr SQL vía
   DuckDB sobre las tablas Delta, si hace falta paginar/filtrar en el
   backend en vez de traer la tabla completa a memoria (hoy `gold` cabe
@@ -165,6 +175,13 @@ Ya existe:
   `GET /audits/{upload_id}/bronze`, `.../silver`, `.../gold` leen la
   tabla Delta correspondiente y la devuelven como preview JSON
   (`LayerPreviewResponse`, genérico para cualquier capa).
+- `api/demo/` — `POST /demo/generate-excel` (`filas`, `error_rate`) llama
+  a `load_catalog_snapshot()` + `generar_ventas()`, sube el resultado a
+  `demo/{uuid}/ventas_generadas.xlsx` en el bucket (`put_object_bytes`,
+  **no** crea un registro de upload) y devuelve una URL de descarga
+  prefirmada (`get_presigned_download_url`) + el detalle de qué se
+  inyectó. El usuario decide si sube el archivo por el flujo normal de
+  `api/uploads/` para correrlo por el pipeline.
 
 Pendiente: `api/catalog/` (CRUD de sedes/trabajadores/productos/etc., solo
 si la fase de reglas dinámicas editables lo necesita).
@@ -181,15 +198,18 @@ resuelva como paquete).
 
 `apps/backend/tests/`, con `pytest` — la estructura espeja `src/` (ej.
 `tests/domain/pipeline/test_silver.py` para `src/domain/pipeline/silver.py`,
-`tests/domain/rules/test_engine.py` para `src/domain/rules/engine.py`).
-Hoy solo cubre `domain/` (pipeline + rules) porque es la parte pura/sin
-infraestructura — justo la ventaja de haber aislado `domain/` de
-FastAPI/SQLAlchemy/Minio desde el principio: 51 tests, todos con datos en
+`tests/domain/rules/test_engine.py` para `src/domain/rules/engine.py`,
+`tests/domain/demo/test_generator.py` para `src/domain/demo/generator.py`).
+Hoy solo cubre `domain/` (pipeline + rules + demo) porque es la parte
+pura/sin infraestructura — justo la ventaja de haber aislado `domain/` de
+FastAPI/SQLAlchemy/Minio desde el principio: 56 tests, todos con datos en
 memoria, sin Postgres ni MinIO corriendo (los tests de `rules/engine.py`
-construyen su propio `CatalogosSnapshot` de juguete en vez de leer
-Postgres de verdad). `tests/conftest.py` mete `apps/backend` en
-`sys.path` (no hay `__init__.py`, así que sin esto los imports
-`from src....` no resuelven).
+y `demo/generator.py` construyen su propio `CatalogosSnapshot` de
+juguete en vez de leer Postgres de verdad — con cobertura completa
+sede×producto en `transferencias`, para no repetir el problema real que
+salió al validar el generador contra el seed de verdad). `tests/conftest.py`
+mete `apps/backend` en `sys.path` (no hay `__init__.py`, así que sin esto
+los imports `from src....` no resuelven).
 
 Correr desde `apps/backend` con el venv activo:
 ```
@@ -237,3 +257,15 @@ la app en producción (ej. `seed_catalog.py`). Se ejecutan con
   detectó una inconsistencia real en `scripts/make_sample_excel.py`
   (`trabajador_pertenece_a_sede`, un empleado puesto en la sede
   equivocada a mano) — se corrigió el fixture, no la regla.
+- **2026-09-01**: agregado `domain/demo/generator.py` + `api/demo/`
+  (generador de excels sintéticos, 21 mutadores). Dos bugs reales
+  encontrados y corregidos al validarlo contra el seed real (no del
+  generador): `codigo_descuento_vigente` comparaba contra "hoy" en vez
+  de contra la fecha de la venta (`generator.py`); `cantidad_dentro_de_transferencias`
+  disparaba en el 74% de filas limpias por falta de cobertura de
+  transferencias en el seed (`scripts/seed_catalog.py`, ahora garantiza
+  una transferencia base por cada combinación sede×producto). Bonus:
+  `codigo_descuento_existe` no trataba `""` igual que `null`
+  (`domain/rules/engine.py`) — no afecta excels reales (el round-trip por
+  Excel ya normaliza celda vacía a `null`), pero sí el contrato
+  documentado en `DATA_MODEL.md`, así que se corrigió en la raíz.
