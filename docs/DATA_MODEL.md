@@ -139,12 +139,51 @@ Si el excel no tiene ni las columnas mínimas, `to_silver` lanza
 `SilverSchemaError` en vez de producir una tabla (error de archivo
 completo, no de fila).
 
-### Gold — pendiente
+### Gold
 
-Una fila por (factura, regla de negocio evaluada): existencia en
-catálogos, vigencia de descuentos, márgenes, cuadre de totales, etc. Se
-documenta acá cuando se construya — ver `PLANNING.md` §4 para el catálogo
-de reglas previstas.
+Una fila por **cada (factura, regla evaluada)** — incluye tanto lo que
+pasó como lo que falló (`paso: true/false`), no solo las violaciones.
+Genera `domain/rules/engine.py`, orquestado por `domain/pipeline/gold.py`.
+
+| Columna | Tipo | Notas |
+|---|---|---|
+| `numero_factura` | `Utf8` | |
+| `sede_codigo` | `Utf8` | denormalizado desde silver, para filtrar sin join |
+| `fecha` | `Date` | ídem |
+| `regla` | `Utf8` | nombre de la regla, ver tabla abajo |
+| `severidad` | `Utf8` | `ERROR` \| `WARNING` |
+| `paso` | `Bool` | |
+| `mensaje` | `Utf8` | `"OK"` si pasó, explicación si no |
+
+**Reglas estáticas v1** (las dinámicas/configurables por JSONLogic son un
+motor aparte, pendiente — ver `PLANNING.md` §7):
+
+| Regla | Severidad | Qué valida |
+|---|---|---|
+| `sede_existe` | ERROR | `sede_codigo` existe en el catálogo |
+| `sede_activa` | ERROR | la sede no está inactiva/cerrada (N/A si no existe) |
+| `trabajador_existe` | ERROR | `trabajador_codigo` existe |
+| `trabajador_activo` | ERROR | el trabajador no está inactivo (N/A si no existe) |
+| `trabajador_pertenece_a_sede` | ERROR | el trabajador es de esa sede, no otra (N/A si no existe) |
+| `producto_existe` | ERROR | `producto_sku` existe |
+| `codigo_descuento_existe` | ERROR | si se usó un código, que exista (N/A si no se usó) |
+| `codigo_descuento_vigente` | WARNING | la fecha de venta cae en la vigencia del código |
+| `codigo_descuento_aplica_a_sede` | WARNING | el código es global o es de esa sede |
+| `factura_cuadra` | ERROR | `total ≈ cantidad × precio_unitario − descuento` (tolerancia 0.01) |
+| `margen_no_negativo` | WARNING | `precio_unitario ≥ costo` del producto |
+| `fecha_no_futura` | ERROR | la venta no es de una fecha futura |
+| `fecha_posterior_a_apertura` | ERROR | la venta no es anterior a que la sede abriera |
+| `factura_no_duplicada` | ERROR | `numero_factura` no se repite **dentro del mismo excel** (no compara contra auditorías anteriores) |
+| `cantidad_dentro_de_transferencias` | WARNING | chequeo **simplificado**: suma total histórica de transferencias hacia esa sede para ese SKU ≥ cantidad vendida (no es un balance temporal ordenado por fecha — ver "Abierto" en `PLANNING.md`) |
+
+Una regla "N/A" (el prerequisito no existe, ej. el trabajador no existe)
+pasa de forma vacía — no se penaliza dos veces el mismo problema de raíz.
+
+**Re-ejecución independiente**: `gold` se puede regenerar sin volver a
+subir el excel ni rehacer bronze/silver — lee el `silver` ya guardado en
+Delta + el estado **actual** de los catálogos en Postgres (`POST
+/audits/{id}/run-gold`, ver `ARCHITECTURE.md`). Útil para re-auditar
+después de corregir algo en un catálogo.
 
 ## Convención de rutas del pipeline en el bucket
 

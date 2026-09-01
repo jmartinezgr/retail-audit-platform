@@ -41,6 +41,8 @@ confidencialidad y porque el dominio retail se entiende sin contexto médico).
 | Base de datos | Postgres (ya en docker-compose) | Ya está, y encaja con Neon/Supabase gratis en prod |
 | Bronze/silver/gold | Tablas **Delta Lake** en el storage (vía `deltalake`/`delta-rs` + Polars), no tablas Postgres | Es lo que le da autenticidad "estilo Databricks" al proyecto — mismo formato de tabla, sin el cluster de Spark detrás |
 | Consulta sobre el lake | DuckDB (`duckdb.sql(...)` directo sobre las tablas Delta) | El backend necesita servir resultados paginados/filtrados al frontend sin cargar todo a memoria ni agregar un motor aparte |
+| Re-run de gold | Endpoint separado (`run-gold`) que lee el silver ya guardado + catálogos en vivo, en vez de siempre rehacer bronze→silver→gold | Los catálogos (Postgres) pueden cambiar sin que el excel cambie — gold debe poder re-auditarse sin volver a subir el archivo |
+| Contenido de gold | Una fila por (factura, regla), **pase o falle** — no solo violaciones | Permite demostrar explícitamente qué se validó y pasó, no solo lo que falló |
 
 ## 3. Dominio ficticio: "Retail Chain Co."
 
@@ -60,24 +62,23 @@ Lo que se sube y se audita (el "excel de ventas"):
   producto_sku, cantidad, precio_unitario, código_descuento (opcional),
   total, método_pago
 
-## 4. Reglas del motor (ejemplos concretos)
+## 4. Reglas del motor
 
-**Estáticas** (van en código, son el "core" del negocio):
-- El producto debe existir en el catálogo maestro.
-- El trabajador debe existir, estar activo y pertenecer a la sede de la
-  venta.
-- `cantidad * precio_unitario - descuento = total` (la factura debe cuadrar).
-- El precio unitario vendido no puede ser menor al costo (margen negativo)
-  sin una regla dinámica que lo autorice explícitamente.
-- No hay número de factura duplicado.
-- La fecha de venta no es futura ni anterior a la apertura de la sede.
-- La cantidad vendida de un SKU en una sede no excede lo que hay disponible
-  según las transferencias registradas hacia esa sede (chequeo cruzado
-  simple de inventario).
+**Estáticas — implementadas (2026-09-01)**: 15 reglas en
+`domain/rules/engine.py`. Catálogo completo (nombre exacto, severidad, y
+qué valida cada una) en `docs/DATA_MODEL.md` § Gold — no se duplica acá
+para no desincronizarse. Dos limitaciones conocidas, a propósito, por
+alcance/tiempo:
+- `factura_no_duplicada` solo compara **dentro del mismo excel**, no
+  contra auditorías anteriores (haría falta una tabla de facturas
+  históricas cross-job).
+- `cantidad_dentro_de_transferencias` es un chequeo simplificado (suma
+  total histórica, no un balance temporal ordenado por fecha) — se decidió
+  así a propósito para no meterse en esa complejidad en esta primera
+  vuelta.
 
-**Dinámicas** (configurables desde el frontend, sin tocar código):
-- El código de descuento debe estar vigente en la fecha de venta y
-  aplicable a esa sede.
+**Dinámicas — pendiente, fase 7** (configurables desde el frontend, sin
+tocar código):
 - Descuento máximo permitido por categoría de producto (umbral editable).
 - Lista de sedes "en mantenimiento" que no deberían tener ventas en un rango
   de fechas.
@@ -85,7 +86,11 @@ Lo que se sube y se audita (el "excel de ventas"):
 Para las dinámicas, usar algo tipo **JSONLogic** (`json-logic-py`) o un
 DSL propio muy simple (condición → severidad → mensaje) guardado en Postgres,
 editable desde el frontend. Esto es lo que hace que la demo se sienta
-"configurable" sin meter un lenguaje de reglas complejo.
+"configurable" sin meter un lenguaje de reglas complejo. Nota: lo que
+originalmente se pensó como "dinámico" para vigencia/aplicabilidad de
+códigos de descuento terminó siendo estático (`codigo_descuento_vigente`,
+`codigo_descuento_aplica_a_sede`) — son chequeos contra datos del
+catálogo, no umbrales que alguien necesite ajustar desde una UI.
 
 ## 5. Arquitectura de capas — estilo lakehouse, sin Spark
 
@@ -220,16 +225,25 @@ marcada, no descartada. Esas pruebas ahora son código real en
 `apps/backend/tests/` (`pytest`, 18 tests) — correr con
 `python -m pytest -v` desde `apps/backend`, ver `ARCHITECTURE.md` § Tests.
 
-Falta (todo lo demás), y dónde va cada cosa según `ARCHITECTURE.md`:
-- `domain/pipeline/gold.py` — motor de reglas + tabla de auditoría, contra
-  silver + los catálogos (existencia, vigencias, márgenes, cuadre de
-  totales — ver §4 de este documento y `docs/DATA_MODEL.md`).
-- `domain/rules/` — motor de reglas: reglas estáticas en código + reglas
-  dinámicas cargadas de una tabla `rule_definitions` (JSONLogic o DSL
-  propio, leída vía `infrastructure/db/`).
-- Tabla `jobs` (o reusar `uploads` con más estados): REQUESTED → UPLOADED →
-  PROCESSING → COMPLETED/FAILED, para que el frontend haga polling de
-  progreso.
+**Pipeline gold — hecho** (2026-09-01): `domain/rules/{types,engine}.py`
+(15 reglas estáticas, catálogo completo en `docs/DATA_MODEL.md`) +
+`domain/pipeline/gold.py` (delgado, solo orquesta) +
+`infrastructure/db/catalog/snapshot.py` (catálogos de Postgres → Polars).
+`AuditService.run_gold` separado de `run_pipeline` a propósito — lee el
+silver ya guardado + catálogos en vivo, así se puede re-auditar sin
+resubir el excel (ver tabla de decisiones §2). Nuevos
+`POST /audits/{id}/run-gold` y `GET /audits/{id}/gold`. Solo al terminar
+gold se marca `UploadStatus.COMPLETED`. Probado end-to-end: el motor
+detectó una inconsistencia real en el excel de prueba (un empleado
+puesto a mano en la sede equivocada) — se corrigió el fixture, no la
+regla, buena señal de que el motor funciona.
+
+Falta (todo lo demás):
+- Reglas **dinámicas** (JSONLogic/DSL + tabla `rule_definitions`
+  editable desde frontend) — fase 7, ver §4.
+- Tabla `jobs` (o reusar `uploads` con más estados) para que el frontend
+  haga polling de progreso más granular que solo
+  REQUESTED→UPLOADED→PROCESSING→COMPLETED/FAILED.
 - `api/demo/generate-excel` — endpoint que genera un excel sintético de
   ventas con un parámetro `error_rate` que inyecta a propósito violaciones
   de cada regla (para que la demo se explique sola: "genera un excel,
@@ -275,12 +289,12 @@ Script Python (Faker + numpy) que:
 
 ## 10. Fases sugeridas
 
-1. Arreglar `services.py`, terminar el flujo de upload end-to-end (subir →
+1. ✅ Arreglar `services.py`, terminar el flujo de upload end-to-end (subir →
    confirmar → ver estado).
-2. Catálogos maestros + seed data.
-3. Capa bronze + silver (parseo/tipado, sin reglas de negocio aún).
-4. Motor de reglas estáticas + capa gold + endpoint para consultar resultados.
-5. Generador de excels sintéticos con `error_rate`.
+2. ✅ Catálogos maestros + seed data.
+3. ✅ Capa bronze + silver (parseo/tipado, sin reglas de negocio aún).
+4. ✅ Motor de reglas estáticas + capa gold + endpoint para consultar resultados.
+5. Generador de excels sintéticos con `error_rate` — **siguiente**.
 6. Frontend: subir, ver progreso, ver tabla de auditoría.
 7. Reglas dinámicas editables (si alcanza el tiempo).
 8. Deploy en capas gratuitas, ajustar si hace falta el VPS de $5.
@@ -292,4 +306,8 @@ Script Python (Faker + numpy) que:
 - Confirmar que `deltalake` escribe/lee sin problemas contra Cloudflare R2
   (S3-compatible) antes de comprometerse con esa ruta de deploy — probar
   temprano, no dejarlo para el final.
+- `factura_no_duplicada` y `cantidad_dentro_de_transferencias` tienen
+  alcance limitado a propósito (ver §4) — revisar si vale la pena
+  profundizarlas antes del deploy final, o dejarlas así y ser explícito
+  sobre la limitación en la demo/README.
 - Nombre final del proyecto para el portafolio (ahora mismo: AuditLake).

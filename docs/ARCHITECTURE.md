@@ -41,12 +41,22 @@ Solo Python + tipos + (cuando aplique) operaciones sobre `polars.DataFrame`
 en memoria, nunca leyendo/escribiendo directo a storage.
 
 - `uploads.py` — `UploadStatus` (enum).
-- `catalog.py` — `TipoDescuento`, `Categoria` (enums). Los catálogos son
-  sobre todo datos de referencia; no hay más lógica de dominio acá todavía
-  — cuando el motor de reglas necesite evaluar cosas como "¿está vigente
-  este código de descuento hoy?", esa lógica va en `rules/`, no aquí.
-- *(pendiente)* `rules/` — motor de reglas: reglas estáticas + evaluador de
-  reglas dinámicas (JSONLogic).
+- `catalog.py` — `TipoDescuento`, `Categoria` (enums).
+- `ventas.py` — `MetodoPago` (enum) + `VENTA_COLUMNAS_REQUERIDAS` /
+  `VENTA_COLUMNAS_OPCIONALES`: el contrato de columnas que se espera del
+  excel. Es la fuente de verdad que usa `silver.py` — `DATA_MODEL.md` lo
+  documenta en formato humano/diagrama, pero el código manda si difieren.
+- `rules/types.py` — `Severidad` (enum ERROR/WARNING) y `CatalogosSnapshot`
+  (dataclass con los catálogos como `pl.DataFrame` — la forma en la que el
+  motor de reglas necesita los datos, sin saber que vienen de Postgres).
+- `rules/engine.py` — el motor de reglas **estáticas**: `_enrich()` hace
+  un left-join de silver contra los 5 catálogos de una sola vez (evita
+  repetir el join en cada regla), y `evaluar()` corre las 15 reglas
+  (funciones = expresiones de Polars vectorizadas, no loops fila por
+  fila) devolviendo una fila por (factura, regla). Catálogo completo de
+  reglas, severidad y el porqué de cada una en `DATA_MODEL.md`.
+  *(pendiente)* el evaluador de reglas **dinámicas** (JSONLogic,
+  configurables desde el frontend) — motor aparte, no compite con este.
 - `pipeline/bronze.py` — `to_bronze(file_bytes: bytes) -> pl.DataFrame`:
   recibe los bytes crudos del excel (no una ruta ni un objeto de storage,
   para que sea testeable sin MinIO) y devuelve todas las columnas como
@@ -57,11 +67,11 @@ en memoria, nunca leyendo/escribiendo directo a storage.
   se descarta. Si faltan columnas obligatorias por completo, lanza
   `SilverSchemaError` en vez de intentar procesar fila por fila — eso es un
   archivo mal formado, no una fila con datos sucios. Esquema completo en
-  `DATA_MODEL.md`. *(pendiente)* `gold.py`.
-- `ventas.py` — `MetodoPago` (enum) + `VENTA_COLUMNAS_REQUERIDAS` /
-  `VENTA_COLUMNAS_OPCIONALES`: el contrato de columnas que se espera del
-  excel. Es la fuente de verdad que usa `silver.py` — `DATA_MODEL.md` lo
-  documenta en formato humano/diagrama, pero el código manda si difieren.
+  `DATA_MODEL.md`.
+- `pipeline/gold.py` — `to_gold(silver_df, catalogos, hoy=None) -> pl.DataFrame`:
+  delgado a propósito, solo llama a `rules.engine.evaluar()`. `hoy` es
+  inyectable (default `date.today()`) para que los tests sean
+  deterministas sin mockear el reloj del sistema.
 
 ### Convención en `pipeline/`: qué es "puro" acá
 
@@ -93,9 +103,16 @@ Implementaciones concretas, sin lógica de negocio.
   alternativos en general) no dan por garantizado el locking atómico que
   `delta-rs` asume por defecto en S3 real — como el pipeline es de un solo
   escritor por job, no hace falta ese locking.
+- `db/catalog/snapshot.py` — `load_catalog_snapshot(db) -> CatalogosSnapshot`:
+  convierte los catálogos de Postgres (vía `CatalogRepository`) a
+  `pl.DataFrame` — el único lugar donde SQLAlchemy y `domain/rules`
+  se tocan. Se lee EN VIVO cada vez que se llama, sin cachear — es
+  justo lo que permite re-ejecutar `gold` después de cambiar algo en un
+  catálogo sin tocar bronze/silver.
 - *(pendiente)* `storage/duckdb_query.py` — helpers para correr SQL vía
-  DuckDB sobre las tablas Delta (lo que consume `api/` para servir
-  resultados paginados/filtrados, cuando exista `gold`).
+  DuckDB sobre las tablas Delta, si hace falta paginar/filtrar en el
+  backend en vez de traer la tabla completa a memoria (hoy `gold` cabe
+  cómodo en memoria para el tamaño de esta demo).
 
 #### Convención de rutas en el bucket
 
@@ -104,7 +121,7 @@ jobs/{upload_id}/
   upload/{filename}   ← archivo crudo tal cual se subió (no es Delta)
   bronze/              ← tabla Delta (domain/pipeline/bronze.py)
   silver/               ← tabla Delta (domain/pipeline/silver.py)
-  gold/                 ← tabla Delta (pendiente)
+  gold/                 ← tabla Delta (domain/pipeline/gold.py)
 ```
 
 `upload/` guarda el archivo tal cual; `bronze/silver/gold` son cada una
@@ -126,16 +143,28 @@ Una subcarpeta por feature, cada una con:
 Ya existe:
 - `api/uploads/` — subir excel → URL prefirmada de MinIO → registro en
   Postgres (guarda `object_name` explícito) → consultar estado.
-- `api/audits/` — `POST /audits/{upload_id}/run` dispara `AuditService.run_pipeline`
-  (bronze → silver, encadenados) con `BackgroundTasks` de FastAPI (no
-  bloquea la respuesta; el `db: Session` inyectado por `Depends` sigue vivo
-  durante la tarea de fondo porque FastAPI corre las background tasks
-  *antes* del cierre de dependencias `yield` — por diseño, no por
-  casualidad). `GET /audits/{upload_id}/bronze` y
-  `GET /audits/{upload_id}/silver` leen la tabla Delta correspondiente y la
-  devuelven como preview JSON (`LayerPreviewResponse`, genérico para
-  cualquier capa). Cuando exista `gold()` se encadena en el mismo
-  `run_pipeline`.
+- `api/audits/` — dos triggers separados, a propósito (ver `PLANNING.md`
+  §"Re-run gold"):
+  - `POST /audits/{upload_id}/run` → `AuditService.run_pipeline` (bronze →
+    silver, encadenados — son deterministas del archivo subido, no hay
+    razón para separarlos).
+  - `POST /audits/{upload_id}/run-gold` → `AuditService.run_gold`: lee el
+    `silver` YA GUARDADO en Delta (no rehace bronze/silver) + el estado
+    ACTUAL de los catálogos vía `load_catalog_snapshot()`, y regenera
+    `gold`. Re-ejecutable en cualquier momento sin volver a subir el
+    excel — por ejemplo, después de corregir un código de descuento en
+    el catálogo. Solo acá se marca `UploadStatus.COMPLETED` (antes de que
+    existiera gold, `run_pipeline` dejaba el estado en `PROCESSING` a
+    propósito).
+
+  Ambos corren con `BackgroundTasks` de FastAPI (no bloquean la
+  respuesta; el `db: Session` inyectado por `Depends` sigue vivo durante
+  la tarea de fondo porque FastAPI corre las background tasks *antes*
+  del cierre de dependencias `yield` — por diseño, no por casualidad).
+
+  `GET /audits/{upload_id}/bronze`, `.../silver`, `.../gold` leen la
+  tabla Delta correspondiente y la devuelven como preview JSON
+  (`LayerPreviewResponse`, genérico para cualquier capa).
 
 Pendiente: `api/catalog/` (CRUD de sedes/trabajadores/productos/etc., solo
 si la fase de reglas dinámicas editables lo necesita).
@@ -151,12 +180,16 @@ resuelva como paquete).
 ## Tests
 
 `apps/backend/tests/`, con `pytest` — la estructura espeja `src/` (ej.
-`tests/domain/pipeline/test_silver.py` para `src/domain/pipeline/silver.py`).
-Hoy solo cubre `domain/pipeline/` porque es la parte pura/sin infraestructura
-— justo la ventaja de haber aislado `domain/` de FastAPI/SQLAlchemy/Minio
-desde el principio: se testea con datos en memoria, sin Postgres ni MinIO
-corriendo. `tests/conftest.py` mete `apps/backend` en `sys.path` (no hay
-`__init__.py`, así que sin esto los imports `from src....` no resuelven).
+`tests/domain/pipeline/test_silver.py` para `src/domain/pipeline/silver.py`,
+`tests/domain/rules/test_engine.py` para `src/domain/rules/engine.py`).
+Hoy solo cubre `domain/` (pipeline + rules) porque es la parte pura/sin
+infraestructura — justo la ventaja de haber aislado `domain/` de
+FastAPI/SQLAlchemy/Minio desde el principio: 51 tests, todos con datos en
+memoria, sin Postgres ni MinIO corriendo (los tests de `rules/engine.py`
+construyen su propio `CatalogosSnapshot` de juguete en vez de leer
+Postgres de verdad). `tests/conftest.py` mete `apps/backend` en
+`sys.path` (no hay `__init__.py`, así que sin esto los imports
+`from src....` no resuelven).
 
 Correr desde `apps/backend` con el venv activo:
 ```
@@ -196,3 +229,11 @@ la app en producción (ej. `seed_catalog.py`). Se ejecutan con
   cada tipo de error detectado individualmente, la fila nunca se descarta,
   columnas obligatorias faltantes por completo vs. campo opcional
   faltante).
+- **2026-09-01**: agregado `domain/rules/` (`types.py`, `engine.py` — 15
+  reglas estáticas) + `domain/pipeline/gold.py` +
+  `infrastructure/db/catalog/snapshot.py`. `api/audits/` gana
+  `POST /audits/{id}/run-gold` y `GET /audits/{id}/gold`, separado de
+  `run` para poder re-auditar sin resubir el excel. Probado end-to-end:
+  detectó una inconsistencia real en `scripts/make_sample_excel.py`
+  (`trabajador_pertenece_a_sede`, un empleado puesto en la sede
+  equivocada a mano) — se corrigió el fixture, no la regla.
