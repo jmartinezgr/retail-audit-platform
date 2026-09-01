@@ -185,11 +185,27 @@ de descuento (mezcla de vigentes/vencidos/futuros, globales/por sede — a
 propósito, para que el motor de reglas tenga qué detectar), 250
 transferencias entre sedes.
 
+**Pipeline bronze — hecho** (2026-09-01): `domain/pipeline/bronze.py`
+(`to_bronze()`, pura — recibe los bytes del excel, devuelve un
+`DataFrame` de Polars con **todas** las columnas como texto, sin tipar ni
+validar nada) + `infrastructure/storage/lake.py` (`write_delta()` /
+`read_delta()`, Polars + `deltalake` contra el bucket S3-compatible,
+`storage_options` con `AWS_ALLOW_HTTP`/`AWS_S3_ALLOW_UNSAFE_RENAME` para
+que funcione contra MinIO) + `api/audits/` (`POST /audits/{id}/run`
+dispara el pipeline en background vía `BackgroundTasks` sin bloquear la
+respuesta; `GET /audits/{id}/bronze` para consultar el resultado).
+Probado end-to-end: excel de 3 filas → tabla Delta real en
+`jobs/{id}/delta/bronze/` (con su `_delta_log/` — se verificó que es Delta
+de verdad, no un parquet suelto). `UploadModel` ahora guarda `object_name`
+explícito (antes se reconstruía la ruta a mano en dos sitios).
+`scripts/make_sample_excel.py` genera un excel de prueba mínimo con
+códigos reales del catálogo — no es el generador sintético de la fase 5
+(ese inyecta errores a propósito), solo un fixture para probar el pipeline
+a mano.
+
 Falta (todo lo demás), y dónde va cada cosa según `ARCHITECTURE.md`:
-- `domain/pipeline/` — funciones puras `bronze()`, `silver()`, `gold()`
-  (reciben/devuelven `DataFrame`s de Polars); `infrastructure/storage/lake.py`
-  hace la lectura/escritura real contra Delta, para poder testear el
-  pipeline sin storage ni HTTP.
+- `domain/pipeline/silver.py`, `gold.py` — tipado/validación estructural
+  (silver) y motor de reglas + tabla de auditoría (gold).
 - `domain/rules/` — motor de reglas: reglas estáticas en código + reglas
   dinámicas cargadas de una tabla `rule_definitions` (JSONLogic o DSL
   propio, leída vía `infrastructure/db/`).

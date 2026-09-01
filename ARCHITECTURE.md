@@ -45,10 +45,21 @@ en memoria, nunca leyendo/escribiendo directo a storage.
   este código de descuento hoy?", esa lógica va en `rules/`, no aquí.
 - *(pendiente)* `rules/` — motor de reglas: reglas estáticas + evaluador de
   reglas dinámicas (JSONLogic).
-- *(pendiente)* `pipeline/` — funciones puras `bronze()`, `silver()`,
-  `gold()` que reciben/devuelven `DataFrame`s de Polars, sin tocar
-  storage/DB directamente (eso lo hace `infrastructure/`, que les pasa los
-  datos ya leídos).
+- `pipeline/bronze.py` — `to_bronze(file_bytes: bytes) -> pl.DataFrame`:
+  recibe los bytes crudos del excel (no una ruta ni un objeto de storage,
+  para que sea testeable sin MinIO) y devuelve todas las columnas como
+  texto (`pl.Utf8`), sin tipar ni validar nada. *(pendiente)* `silver.py`,
+  `gold.py`.
+
+### Convención en `pipeline/`: qué es "puro" acá
+
+`bronze()` parsea bytes de excel en memoria (`pl.read_excel` sobre un
+`BytesIO`) — no toca red ni disco, así que cuenta como puro/testeable aunque
+técnicamente "parsear" no sea una operación trivial. Lo que **no** entra a
+`domain/pipeline/` es leer esos bytes de MinIO o escribir el resultado a
+Delta — eso lo hace `infrastructure/storage/` (`minio_client.get_object_bytes`,
+`lake.write_delta`), y quien los conecta es el `service.py` de
+`api/audits/`.
 
 ### `infrastructure/` — adaptadores al mundo exterior
 
@@ -62,12 +73,17 @@ Implementaciones concretas, sin lógica de negocio.
   `db/catalog/models.py` tiene `SedeModel`, `TrabajadorModel`,
   `ProductoModel`, `CodigoDescuentoModel`, `TransferenciaModel` con
   `ForeignKey` reales entre sí).
-- `storage/minio_client.py` — cliente de MinIO/S3.
-- *(pendiente)* `storage/lake.py` — helpers para leer/escribir tablas Delta
-  (`deltalake` + Polars) contra el bucket S3-compatible.
+- `storage/minio_client.py` — cliente de MinIO/S3 (`get_minio_client`,
+  `get_object_bytes`).
+- `storage/lake.py` — `write_delta()` / `read_delta()`: Polars + `deltalake`
+  contra el bucket S3-compatible. `storage_options` incluye
+  `AWS_ALLOW_HTTP` y `AWS_S3_ALLOW_UNSAFE_RENAME` porque MinIO (y S3
+  alternativos en general) no dan por garantizado el locking atómico que
+  `delta-rs` asume por defecto en S3 real — como el pipeline es de un solo
+  escritor por job, no hace falta ese locking.
 - *(pendiente)* `storage/duckdb_query.py` — helpers para correr SQL vía
   DuckDB sobre las tablas Delta (lo que consume `api/` para servir
-  resultados paginados/filtrados).
+  resultados paginados/filtrados, cuando exista `gold`).
 
 ### `api/` — la única capa que sabe que existe HTTP
 
@@ -78,12 +94,20 @@ Una subcarpeta por feature, cada una con:
 - `service.py` — orquesta: llama a `infrastructure/` para leer/guardar,
   llama a `domain/` para la lógica, devuelve datos simples al router.
 
-Ya existe: `api/uploads/` (subir excel → URL prefirmada de MinIO → registro
-en Postgres → consultar estado).
+Ya existe:
+- `api/uploads/` — subir excel → URL prefirmada de MinIO → registro en
+  Postgres (guarda `object_name` explícito) → consultar estado.
+- `api/audits/` — `POST /audits/{upload_id}/run` dispara el pipeline con
+  `BackgroundTasks` de FastAPI (no bloquea la respuesta; el `db: Session`
+  inyectado por `Depends` sigue vivo durante la tarea de fondo porque
+  FastAPI corre las background tasks *antes* del cierre de dependencias
+  `yield` — por diseño, no por casualidad). `GET /audits/{upload_id}/bronze`
+  lee la tabla Delta resultante y la devuelve como preview JSON. Hoy solo
+  corre `bronze()`; cuando existan `silver()`/`gold()` se encadenan en el
+  mismo `AuditService.run_bronze` (o se renombra a algo como `run_pipeline`).
 
-Pendiente: `api/catalog/` (CRUD de sedes/trabajadores/productos/etc.),
-`api/audits/` (dispara el pipeline sobre un upload confirmado, expone los
-resultados de `gold` vía DuckDB).
+Pendiente: `api/catalog/` (CRUD de sedes/trabajadores/productos/etc., solo
+si la fase de reglas dinámicas editables lo necesita).
 
 ## Convención de imports
 
@@ -106,3 +130,7 @@ la app en producción (ej. `seed_catalog.py`). Se ejecutan con
   a propósito, antes de que hubiera más módulos que mover.
 - **2026-09-01**: agregado `domain/catalog.py` +
   `infrastructure/db/catalog/` (modelos, repositorio) + `scripts/seed_catalog.py`.
+- **2026-09-01**: agregado `domain/pipeline/bronze.py`,
+  `infrastructure/storage/lake.py`, `api/audits/` (primer tramo del
+  pipeline, corre en background). `UploadModel` ahora guarda `object_name`
+  explícito en vez de reconstruir la ruta a mano.
