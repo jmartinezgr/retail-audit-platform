@@ -148,6 +148,21 @@ ya y se mantiene. Los imports son siempre absolutos desde `src`, ej.
 Se corre con `uvicorn src.main:app` desde `apps/backend/` (para que `src`
 resuelva como paquete).
 
+## Tests
+
+`apps/backend/tests/`, con `pytest` — la estructura espeja `src/` (ej.
+`tests/domain/pipeline/test_silver.py` para `src/domain/pipeline/silver.py`).
+Hoy solo cubre `domain/pipeline/` porque es la parte pura/sin infraestructura
+— justo la ventaja de haber aislado `domain/` de FastAPI/SQLAlchemy/Minio
+desde el principio: se testea con datos en memoria, sin Postgres ni MinIO
+corriendo. `tests/conftest.py` mete `apps/backend` en `sys.path` (no hay
+`__init__.py`, así que sin esto los imports `from src....` no resuelven).
+
+Correr desde `apps/backend` con el venv activo:
+```
+python -m pytest -v
+```
+
 ## Scripts operativos
 
 `apps/backend/scripts/` — herramientas que se corren a mano, no código de
@@ -176,3 +191,8 @@ la app en producción (ej. `seed_catalog.py`). Se ejecutan con
   `ARCHITECTURE.md`) y agregado `docs/DATA_MODEL.md` (entidades, esquema de
   entrada/salida por capa, diagrama de clases). `CLAUDE.md` se queda en la
   raíz — es donde Claude Code lo carga automático.
+- **2026-09-01**: agregado `tests/` con `pytest` — cobertura de
+  `domain/pipeline/bronze.py` y `silver.py` (18 tests: tipado correcto,
+  cada tipo de error detectado individualmente, la fila nunca se descarta,
+  columnas obligatorias faltantes por completo vs. campo opcional
+  faltante).

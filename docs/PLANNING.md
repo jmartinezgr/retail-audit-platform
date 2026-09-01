@@ -216,7 +216,9 @@ Encadenado en `AuditService.run_pipeline` (bronze → silver); nuevo
 `GET /audits/{id}/silver`. Probado con datos rotos a propósito (factura
 vacía, fecha inválida, cantidad negativa/no entera, método de pago
 inventado) — cada error se detecta individualmente y la fila queda
-marcada, no descartada.
+marcada, no descartada. Esas pruebas ahora son código real en
+`apps/backend/tests/` (`pytest`, 18 tests) — correr con
+`python -m pytest -v` desde `apps/backend`, ver `ARCHITECTURE.md` § Tests.
 
 Falta (todo lo demás), y dónde va cada cosa según `ARCHITECTURE.md`:
 - `domain/pipeline/gold.py` — motor de reglas + tabla de auditoría, contra
