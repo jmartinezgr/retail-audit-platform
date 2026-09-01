@@ -45,3 +45,23 @@ def get_silver(upload_id: str, db: Session = Depends(get_db)):
     """Consulta la tabla silver resultante"""
     service = AuditService(db)
     return service.get_silver_preview(upload_id)
+
+
+@router.post("/{upload_id}/run-gold", response_model=RunAuditResponse)
+def run_gold(
+    upload_id: str,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
+    """Regenera gold a partir del silver YA GUARDADO + el estado actual de
+    los catálogos, sin volver a subir el excel ni rehacer bronze/silver"""
+    service = AuditService(db)
+    background_tasks.add_task(service.run_gold, upload_id)
+    return {"upload_id": upload_id, "status": "PROCESSING"}
+
+
+@router.get("/{upload_id}/gold", response_model=LayerPreviewResponse)
+def get_gold(upload_id: str, db: Session = Depends(get_db)):
+    """Consulta la tabla gold resultante"""
+    service = AuditService(db)
+    return service.get_gold_preview(upload_id)

@@ -6,8 +6,10 @@ confirmado, usando los adaptadores de infraestructura.
 from sqlalchemy.orm import Session
 
 from src.domain.pipeline.bronze import to_bronze
+from src.domain.pipeline.gold import to_gold
 from src.domain.pipeline.silver import to_silver
 from src.domain.uploads import UploadStatus
+from src.infrastructure.db.catalog.snapshot import load_catalog_snapshot
 from src.infrastructure.db.uploads.repository import UploadRepository
 from src.infrastructure.storage import lake
 from src.infrastructure.storage.minio_client import get_object_bytes
@@ -21,14 +23,19 @@ def _silver_key(upload_id: str) -> str:
     return f"jobs/{upload_id}/silver"
 
 
+def _gold_key(upload_id: str) -> str:
+    return f"jobs/{upload_id}/gold"
+
+
 class AuditService:
     def __init__(self, db: Session):
         self.db = db
         self.uploads = UploadRepository(db)
 
     def run_pipeline(self, upload_id: str) -> None:
-        """Corre bronze -> silver sobre el upload. No marca el upload como
-        COMPLETED - eso queda reservado para cuando gold exista."""
+        """Corre bronze -> silver sobre el upload. Deterministas del
+        archivo: no hace falta repetirlas para re-auditar tras un cambio
+        en los catálogos, para eso está run_gold por separado."""
         upload = self.uploads.get(upload_id)
         if not upload:
             raise ValueError(f"Upload {upload_id} no encontrado")
@@ -46,11 +53,34 @@ class AuditService:
             self.uploads.update_status(upload_id, UploadStatus.FAILED)
             raise
 
+    def run_gold(self, upload_id: str) -> None:
+        """Lee el silver YA GUARDADO (no rehace bronze/silver) + el estado
+        ACTUAL de los catálogos, y regenera gold. Re-ejecutable en
+        cualquier momento sin volver a subir el excel - por ejemplo,
+        después de corregir un código de descuento en el catálogo."""
+        upload = self.uploads.get(upload_id)
+        if not upload:
+            raise ValueError(f"Upload {upload_id} no encontrado")
+
+        self.uploads.update_status(upload_id, UploadStatus.PROCESSING)
+        try:
+            silver_df = lake.read_delta(_silver_key(upload_id))
+            catalogos = load_catalog_snapshot(self.db)
+            gold_df = to_gold(silver_df, catalogos)
+            lake.write_delta(gold_df, _gold_key(upload_id))
+            self.uploads.update_status(upload_id, UploadStatus.COMPLETED)
+        except Exception:
+            self.uploads.update_status(upload_id, UploadStatus.FAILED)
+            raise
+
     def get_bronze_preview(self, upload_id: str, limit: int = 20) -> dict:
         return self._preview(_bronze_key(upload_id), upload_id, limit)
 
     def get_silver_preview(self, upload_id: str, limit: int = 20) -> dict:
         return self._preview(_silver_key(upload_id), upload_id, limit)
+
+    def get_gold_preview(self, upload_id: str, limit: int = 20) -> dict:
+        return self._preview(_gold_key(upload_id), upload_id, limit)
 
     def _preview(self, object_key: str, upload_id: str, limit: int) -> dict:
         df = lake.read_delta(object_key)

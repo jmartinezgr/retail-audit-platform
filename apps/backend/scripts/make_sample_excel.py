@@ -14,11 +14,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import polars as pl
 
+# Nota: sede_codigo/trabajador_codigo deben coincidir con la sede REAL del
+# trabajador en el seed (scripts/seed_catalog.py) o "trabajador_pertenece_a_sede"
+# falla en gold - eso ya pasó una vez, quedó ahí como recordatorio.
 FILAS = [
     {
         "numero_factura": "FAC-0001",
         "fecha": "2026-08-15",
-        "sede_codigo": "TDA-001",
+        "sede_codigo": "TDA-004",  # EMP-0001 pertenece a TDA-004
         "trabajador_codigo": "EMP-0001",
         "producto_sku": "ELEC-0001",
         "cantidad": 2,
@@ -30,19 +33,19 @@ FILAS = [
     {
         "numero_factura": "FAC-0002",
         "fecha": "2026-08-16",
-        "sede_codigo": "TDA-003",
+        "sede_codigo": "TDA-002",  # EMP-0007 pertenece a TDA-002
         "trabajador_codigo": "EMP-0007",
         "producto_sku": "ROPA-0003",
         "cantidad": 1,
         "precio_unitario": 190000,
-        "codigo_descuento": "MEDELLIN_VIP",
-        "total": 167200,
+        "codigo_descuento": "",
+        "total": 190000,
         "metodo_pago": "EFECTIVO",
     },
     {
         "numero_factura": "FAC-0003",
         "fecha": "2026-08-17",
-        "sede_codigo": "TDA-005",
+        "sede_codigo": "TDA-005",  # EMP-0004 pertenece a TDA-005
         "trabajador_codigo": "EMP-0004",
         "producto_sku": "BELL-0003",
         "cantidad": 3,
