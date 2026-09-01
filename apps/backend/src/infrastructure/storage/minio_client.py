@@ -17,3 +17,14 @@ def get_minio_client() -> Minio:
         client.make_bucket(settings.MINIO_BUCKET)
 
     return client
+
+
+def get_object_bytes(object_name: str) -> bytes:
+    """Descarga el contenido completo de un objeto del bucket."""
+    client = get_minio_client()
+    response = client.get_object(settings.MINIO_BUCKET, object_name)
+    try:
+        return response.read()
+    finally:
+        response.close()
+        response.release_conn()
