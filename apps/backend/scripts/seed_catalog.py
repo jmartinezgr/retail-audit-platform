@@ -263,9 +263,27 @@ def seed_codigos_descuento(db) -> None:
 
 
 def seed_transferencias(
-    db, sede_codigos: list[str], skus: list[str], total: int = 250
+    db, sede_codigos: list[str], skus: list[str], extra: int = 200
 ) -> None:
-    for _ in range(total):
+    """Una transferencia base por cada (sede, producto) para que la regla
+    'cantidad_dentro_de_transferencias' tenga con qué comparar en toda
+    combinación, no solo en las que le tocaron al azar - más `extra`
+    transferencias puramente aleatorias encima, para variar montos."""
+    for sede in sede_codigos:
+        for sku in skus:
+            origen = random.choice([s for s in sede_codigos if s != sede])
+            db.add(
+                TransferenciaModel(
+                    id=str(uuid.uuid4()),
+                    producto_sku=sku,
+                    sede_origen_codigo=origen,
+                    sede_destino_codigo=sede,
+                    cantidad=random.randint(20, 150),
+                    fecha=date.today() - timedelta(days=random.randint(0, 180)),
+                )
+            )
+
+    for _ in range(extra):
         origen, destino = random.sample(sede_codigos, 2)
         db.add(
             TransferenciaModel(
@@ -295,6 +313,7 @@ def main() -> None:
         print(f"Trabajadores: {len(trabajador_codigos)}")
         print(f"Productos: {len(skus)}")
         print(f"Códigos de descuento: {len(CODIGOS_DESCUENTO)}")
+        print(f"Transferencias: {len(sede_codigos) * len(skus)} base + 200 extra")
         print("Seed completado.")
     finally:
         db.close()
