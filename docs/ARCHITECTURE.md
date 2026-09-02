@@ -47,6 +47,9 @@ en memoria, nunca leyendo/escribiendo directo a storage.
   `VENTA_COLUMNAS_OPCIONALES`: el contrato de columnas que se espera del
   excel. Es la fuente de verdad que usa `silver.py` — `DATA_MODEL.md` lo
   documenta en formato humano/diagrama, pero el código manda si difieren.
+  También `validar_columnas()`: mismo contrato, pero solo compara nombres
+  de columna (usado por el chequeo rápido de `api/uploads/`, no por
+  silver).
 - `rules/types.py` — `Severidad` (enum ERROR/WARNING) y `CatalogosSnapshot`
   (dataclass con los catálogos como `pl.DataFrame` — la forma en la que el
   motor de reglas necesita los datos, sin saber que vienen de Postgres).
@@ -159,7 +162,14 @@ Una subcarpeta por feature, cada una con:
 
 Ya existe:
 - `api/uploads/` — subir excel → URL prefirmada de MinIO → registro en
-  Postgres (guarda `object_name` explícito) → consultar estado.
+  Postgres (guarda `object_name` y `session_id` explícitos) → consultar
+  estado. `GET /uploads/` filtra por `session_id` (dependency
+  `get_session_id`, header `X-Client-Id`, cae a `"anonymous"` si no viene
+  — ver `PLANNING.md` §2 "Aislar uploads entre visitantes"). `GET
+  /uploads/{id}/validate-columns` (`domain/ventas.validar_columnas` +
+  `domain/pipeline/bronze.read_columns`, que lee solo encabezados vía
+  `read_options={"n_rows": 0}` de fastexcel — no carga filas) da un
+  chequeo instantáneo sin tocar bronze/silver/gold ni el status del job.
 - `api/audits/` — dos triggers separados, a propósito (ver `PLANNING.md`
   §"Re-run gold"):
   - `POST /audits/{upload_id}/run` → `AuditService.run_pipeline` (bronze →
@@ -242,11 +252,12 @@ la app en producción (ej. `seed_catalog.py`). Se ejecutan con
 src/
   types/api.ts         # espeja los schemas Pydantic del backend, a mano
   lib/api.ts            # cliente HTTP tipado (fetch), un objeto `api.*` por router del backend
+  lib/session.ts          # UUID anónimo en localStorage - lib/api.ts lo manda como X-Client-Id
   lib/pipeline.ts        # runFullPipeline() - corre bronze→silver→gold esperando cada capa de verdad
   components/ui/         # shadcn/ui (generados, no se editan a mano salvo necesidad real)
-  components/app/        # componentes propios (layout, status-badge, gold-table)
-  pages/                  # una por ruta
-  App.tsx                 # rutas (react-router)
+  components/app/        # componentes propios (layout, status-badge, gold-table, column-check)
+  pages/                  # una por ruta (landing-page, home-page, job-detail-page)
+  App.tsx                 # rutas (react-router) - "/" landing, "/app" home, "/jobs/:id" detalle
   main.tsx                # QueryClientProvider + BrowserRouter + Toaster
 ```
 
@@ -270,6 +281,19 @@ fase de deploy).
 hace el trabajo pesado), así que una tabla headless no aportaba nada ahí
 — se armó con los primitivos de `components/ui/table`. Queda instalada
 para cuando una pantalla necesite ordenar/filtrar en memoria de verdad.
+
+**Landing vs. app**: `/` es marketing (`landing-page.tsx`, sin `AppLayout`
+— tiene su propio header mínimo), `/app` y `/jobs/:id` sí usan
+`AppLayout` (el logo dentro de la app apunta a `/app`, no a `/`; hay un
+link "Sobre el proyecto" de vuelta a `/`).
+
+**Tema**: los tokens de color en `index.css` (`--primary`, `--ring`,
+`--accent`, `--sidebar-*`, `--chart-*`) están recoloreados a violeta
+(`oklch` hue ~292) sobre la base neutral de shadcn — fondos/texto siguen
+neutros, el acento es deliberadamente selectivo. **No hay toggle de modo
+oscuro todavía**: el bloque `.dark` existe (lo generó el preset de
+shadcn) pero nada aplica esa clase — falta un componente de toggle o
+detección de `prefers-color-scheme`.
 
 ## Historial de cambios estructurales
 
@@ -337,3 +361,12 @@ para cuando una pantalla necesite ordenar/filtrar en memoria de verdad.
   contra la API real, probadas en navegador con Playwright. Título de
   este documento cambiado de "Arquitectura del backend" a "Arquitectura"
   ahora que también cubre frontend.
+- **2026-09-02**: `UploadModel` gana `session_id` (sesión anónima por
+  navegador, header `X-Client-Id`) — `GET /uploads/` ahora filtra por
+  sesión. Agregado `GET /uploads/{id}/validate-columns`
+  (`domain/ventas.validar_columnas` + `bronze.read_columns`, solo
+  encabezados). Frontend: landing page en `/` (home pasa a `/app`), tema
+  recoloreado a violeta, `column-check.tsx` integrado en el detalle del
+  job. Corregido `gold-table.tsx`: no mostraba ningún mensaje cuando gold
+  todavía no existía (quedaba vacía en silencio) — encontrado probando el
+  flujo completo en navegador, no asumiendo el camino feliz.

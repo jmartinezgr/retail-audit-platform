@@ -44,6 +44,8 @@ confidencialidad y porque el dominio retail se entiende sin contexto médico).
 | Re-run de gold | Endpoint separado (`run-gold`) que lee el silver ya guardado + catálogos en vivo, en vez de siempre rehacer bronze→silver→gold | Los catálogos (Postgres) pueden cambiar sin que el excel cambie — gold debe poder re-auditarse sin volver a subir el archivo |
 | Contenido de gold | Una fila por (factura, regla), **pase o falle** — no solo violaciones | Permite demostrar explícitamente qué se validó y pasó, no solo lo que falló |
 | Stack frontend | React + Vite + TypeScript, Tailwind + **shadcn/ui**, lucide-react (íconos), TanStack Query + TanStack Table, React Router | shadcn/ui no es una dependencia cerrada (componentes que se copian al proyecto, sobre Radix) — se ve profesional sin diseñar desde cero; TanStack Query/Table encajan directo con el polling de estado y la tabla de auditoría que ya estaban planeados |
+| Aislar uploads entre visitantes | Sesión anónima por navegador (UUID en localStorage, header `X-Client-Id`) — no login | La demo es pública; sin esto la lista de uploads se mezcla entre visitantes. Login real agrega fricción que no vale la pena para un portafolio — no es control de acceso, solo scoping de lista |
+| Validador de columnas | Endpoint aparte (`validate-columns`) que solo lee encabezados, sin correr bronze/silver/gold | Feedback inmediato de "¿este excel tiene la forma correcta?" sin comprometerse a procesar el archivo completo |
 
 ## 3. Dominio ficticio: "Retail Chain Co."
 
@@ -313,20 +315,47 @@ pagina en el servidor, no le hacía falta; queda lista para cuando una
 tabla necesite ordenar en memoria de verdad.
 
 **Pantallas — hecho** (2026-09-02):
-1. **Home** (`pages/home-page.tsx`): generar excel sintético (filas +
-   error_rate) o subir uno propio — ambos caen al mismo flujo
+1. **Landing** (`pages/landing-page.tsx`, ruta `/`): explica el proyecto —
+   qué es, de dónde viene la idea (motor real de auditoría de facturación
+   con Databricks, reimaginado sin Spark ni datos reales), el patrón de
+   capas, el stack. CTA a `/app`.
+2. **Home** (`pages/home-page.tsx`, ruta `/app`): generar excel sintético
+   (filas + error_rate) o subir uno propio — ambos caen al mismo flujo
    `request-upload-url → PUT → confirm`. Lista de uploads recientes con
-   polling (`refetchInterval`).
-2. **Detalle del job** (`pages/job-detail-page.tsx`): un botón corre
-   bronze→silver→gold completo, esperando de verdad a que cada capa exista
-   (mismo arreglo que ya tenía `viewer.html` — el status no distingue
-   "silver listo" de "silver corriendo"). Pestañas bronze/silver (preview
-   simple) y gold (`components/app/gold-table.tsx`, filtros + paginación
-   real contra `GET /audits/{id}/gold/query` + `/gold/summary`).
+   polling (`refetchInterval`), **scoped a la sesión anónima** (ver abajo).
+3. **Detalle del job** (`pages/job-detail-page.tsx`, ruta `/jobs/:id`):
+   chequeo rápido de columnas apenas se sube (`components/app/column-check.tsx`,
+   `GET /uploads/{id}/validate-columns` — no corre bronze/silver/gold, solo
+   compara encabezados). Un botón corre bronze→silver→gold completo,
+   esperando de verdad a que cada capa exista (mismo arreglo que ya tenía
+   `viewer.html`). Pestañas bronze/silver (preview simple) y gold
+   (`components/app/gold-table.tsx`, filtros + paginación real contra
+   `GET /audits/{id}/gold/query` + `/gold/summary`).
+
+**Sesión anónima por navegador — hecho** (2026-09-02): sin login. El
+frontend genera un UUID en el primer load (`lib/session.ts`, localStorage)
+y lo manda como header `X-Client-Id` en cada request
+(`lib/api.ts`). El backend filtra `GET /uploads/` por ese ID — cada
+visitante de la demo pública ve solo lo suyo. Sin header (curl, scripts,
+`viewer.html`) cae a un bucket `"anonymous"` compartido, no rompe nada
+existente. Es scoping de lista para UX, **no** control de acceso: con el
+`upload_id` exacto, cualquiera sigue pudiendo consultar ese job por los
+demás endpoints — suficiente para una demo, no para datos sensibles.
+
+**Tema morado** — hecho (2026-09-02): mismo shadcn/ui, solo se
+recolorearon los tokens `primary`/`ring`/`accent`/`sidebar`/`chart` a un
+violeta (`oklch(~0.5-0.7 ~0.2 292)`) en `index.css`, claro y oscuro.
+Fondos y texto se quedan neutros a propósito — el acento aparece en
+botones/foco/estados destacados, no en todas partes.
 
 Probado en navegador de verdad (Playwright): sin errores de consola, carga
 contra datos reales (750,000 filas de gold, 50,000 facturas), filtros y
-paginación correctos, build de producción limpio.
+paginación correctos, build de producción limpio, flujo completo desde la
+landing hasta gold verificado clic a clic.
+
+**Nota abierta**: no hay toggle de modo oscuro — el `.dark` de shadcn
+existe en el CSS pero nada lo activa todavía (ni un botón, ni
+`prefers-color-scheme`). La app renderiza siempre en claro por ahora.
 
 Falta: **reglas dinámicas** (opcional, fase 2 del frontend) — pantalla
 para ver/editar umbrales y volver a procesar sin re-subir.
