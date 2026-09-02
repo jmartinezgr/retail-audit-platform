@@ -254,8 +254,12 @@ src/
   lib/api.ts            # cliente HTTP tipado (fetch), un objeto `api.*` por router del backend
   lib/session.ts          # UUID anónimo en localStorage - lib/api.ts lo manda como X-Client-Id
   lib/pipeline.ts        # runFullPipeline() - corre bronze→silver→gold esperando cada capa de verdad
+  lib/theme.tsx           # ThemeProvider/useTheme - toggle .dark, persiste en localStorage
+  lib/i18n.tsx             # I18nProvider/useI18n - t(key, vars) con interpolación {placeholder}
+  i18n/translations.ts    # diccionarios en/es, ~80 claves (layout, landing, home, job, gold, columnCheck)
   components/ui/         # shadcn/ui (generados, no se editan a mano salvo necesidad real)
-  components/app/        # componentes propios (layout, status-badge, gold-table, column-check)
+  components/app/        # componentes propios (layout, status-badge, gold-table, column-check,
+                          #   theme-toggle, language-toggle)
   pages/                  # una por ruta (landing-page, home-page, job-detail-page)
   App.tsx                 # rutas (react-router) - "/" landing, "/app" home, "/jobs/:id" detalle
   main.tsx                # QueryClientProvider + BrowserRouter + Toaster
@@ -290,10 +294,23 @@ link "Sobre el proyecto" de vuelta a `/`).
 **Tema**: los tokens de color en `index.css` (`--primary`, `--ring`,
 `--accent`, `--sidebar-*`, `--chart-*`) están recoloreados a violeta
 (`oklch` hue ~292) sobre la base neutral de shadcn — fondos/texto siguen
-neutros, el acento es deliberadamente selectivo. **No hay toggle de modo
-oscuro todavía**: el bloque `.dark` existe (lo generó el preset de
-shadcn) pero nada aplica esa clase — falta un componente de toggle o
-detección de `prefers-color-scheme`.
+neutros, el acento es deliberadamente selectivo. El bloque `.dark` (lo
+generó el preset de shadcn) se activa con `theme-toggle.tsx` vía
+`lib/theme.tsx`; un script inline en `index.html` lee `localStorage`
+antes de que React monte para no mostrar un flash del tema equivocado.
+
+**i18n propio, no `react-i18next`**: la superficie a traducir es chica
+(un solo idioma alterno) y no justificaba la dependencia — `lib/i18n.tsx`
+es un contexto simple con un diccionario plano (`i18n/translations.ts`)
+e interpolación `{placeholder}` por regex. Inglés por defecto (portafolio
+para audiencia internacional), español disponible por `language-toggle.tsx`,
+persistido en `localStorage` igual que el tema. Solo se traduce la UI
+estática del frontend — los datos que produce el backend (nombres de
+regla, mensajes de gold, códigos de catálogo) se quedan en español a
+propósito, es el idioma real del dominio. `lib/pipeline.ts` no formatea
+strings directamente: emite un `PipelineStatus` tipado (unión discriminada)
+que `job-detail-page.tsx` traduce, porque `pipeline.ts` vive fuera de
+React y no puede llamar a `useI18n()`.
 
 ## Historial de cambios estructurales
 
@@ -370,3 +387,9 @@ detección de `prefers-color-scheme`.
   job. Corregido `gold-table.tsx`: no mostraba ningún mensaje cuando gold
   todavía no existía (quedaba vacía en silencio) — encontrado probando el
   flujo completo en navegador, no asumiendo el camino feliz.
+- **2026-09-02**: agregado `lib/theme.tsx` (toggle de modo oscuro,
+  persistido) y `lib/i18n.tsx` + `i18n/translations.ts` (i18n propio,
+  inglés por defecto, español disponible) — ver detalle arriba en "Tema"
+  e "i18n propio". Toda la UI estática (landing, home, detalle de job)
+  traducida. Verificado con `tsc -b`, `oxlint`, `npm run build`, y en
+  navegador real con Playwright (claro/oscuro × en/es).

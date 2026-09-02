@@ -353,9 +353,18 @@ contra datos reales (750,000 filas de gold, 50,000 facturas), filtros y
 paginación correctos, build de producción limpio, flujo completo desde la
 landing hasta gold verificado clic a clic.
 
-**Nota abierta**: no hay toggle de modo oscuro — el `.dark` de shadcn
-existe en el CSS pero nada lo activa todavía (ni un botón, ni
-`prefers-color-scheme`). La app renderiza siempre en claro por ahora.
+**Modo oscuro + i18n** — hecho (2026-09-02): botón en el header togglea
+la clase `.dark` (`lib/theme.tsx`, `ThemeProvider`/`useTheme`), persiste
+en `localStorage` y un script inline en `index.html` la aplica antes de
+que React monte (evita el flash de tema incorrecto). En paralelo, un
+i18n propio y liviano (sin `react-i18next`: `i18n/translations.ts` +
+`lib/i18n.tsx`, contexto + interpolación `{placeholder}`) traduce toda
+la UI estática (landing, home, detalle de job) a inglés por defecto,
+con español disponible vía otro botón en el header; el locale también
+se persiste en `localStorage`. Decisión explícita: los datos que genera
+el backend (nombres de reglas, mensajes de gold, códigos de catálogo)
+se quedan en español a propósito — es el idioma real del dominio
+ficticio, no texto de interfaz.
 
 Falta: **reglas dinámicas** (opcional, fase 2 del frontend) — pantalla
 para ver/editar umbrales y volver a procesar sin re-subir.
