@@ -19,11 +19,16 @@ class UploadRepository:
         upload_id: str,
         filename: str,
         object_name: str,
+        session_id: str,
         status: str = UploadStatus.REQUESTED,
     ) -> UploadModel:
         """Guarda un nuevo upload"""
         upload = UploadModel(
-            id=upload_id, filename=filename, object_name=object_name, status=status
+            id=upload_id,
+            filename=filename,
+            object_name=object_name,
+            session_id=session_id,
+            status=status,
         )
         self.db.add(upload)
         self.db.commit()
@@ -52,10 +57,11 @@ class UploadRepository:
             .all()
         )
 
-    def list_recent(self, limit: int = 20) -> list[UploadModel]:
-        """Lista recientes"""
+    def list_recent(self, session_id: str, limit: int = 20) -> list[UploadModel]:
+        """Lista recientes de una sesión (no globales - ver nota en el modelo)"""
         return (
             self.db.query(UploadModel)
+            .filter(UploadModel.session_id == session_id)
             .order_by(UploadModel.created_at.desc())
             .limit(limit)
             .all()

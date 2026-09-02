@@ -51,3 +51,14 @@ class UploadListResponse(BaseModel):
 
     count: int
     uploads: list[UploadListItemResponse]
+
+
+class ColumnValidationResponse(BaseModel):
+    """Chequeo rápido de columnas - no corre el pipeline completo"""
+
+    upload_id: str
+    columnas_encontradas: list[str]
+    columnas_faltantes: list[str]
+    columnas_opcionales_presentes: list[str]
+    columnas_extra: list[str]
+    valido: bool

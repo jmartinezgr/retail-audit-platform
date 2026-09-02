@@ -14,3 +14,10 @@ def to_bronze(file_bytes: bytes) -> pl.DataFrame:
     corrige en esta capa."""
     df = pl.read_excel(BytesIO(file_bytes))
     return df.select(pl.all().cast(pl.Utf8))
+
+
+def read_columns(file_bytes: bytes) -> list[str]:
+    """Lee solo los encabezados, sin cargar filas - para el chequeo rápido
+    de columnas (domain/ventas.validar_columnas) sin correr bronze/silver/gold."""
+    df = pl.read_excel(BytesIO(file_bytes), read_options={"n_rows": 0})
+    return df.columns
