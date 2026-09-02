@@ -14,6 +14,9 @@ node_modules/
 dist/
 .vite/
 
+# Playwright MCP (browser-testing snapshots, not project output)
+.playwright-mcp/
+
 # OS
 .DS_Store
 Thumbs.db
