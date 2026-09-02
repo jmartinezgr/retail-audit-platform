@@ -7,6 +7,10 @@ from src.domain.pipeline.gold import to_gold
 from src.domain.pipeline.silver import to_silver
 from src.domain.rules.types import CatalogosSnapshot
 
+# Fija - generar_ventas() y to_gold() aceptan `hoy` como parámetro
+# inyectable justo para que estos tests no dependan del reloj real (nos
+# tocó una vez: un test con HOY fijo del día en que se escribió empezó a
+# fallar días después, porque el generador seguía usando date.today()).
 HOY = date(2026, 9, 1)
 
 
@@ -54,7 +58,7 @@ def _catalogos() -> CatalogosSnapshot:
 
 def test_error_rate_zero_produces_all_clean_rows():
     catalogos = _catalogos()
-    df, conteo = generar_ventas(catalogos, filas=30, error_rate=0.0, seed=1)
+    df, conteo = generar_ventas(catalogos, filas=30, error_rate=0.0, seed=1, hoy=HOY)
 
     assert conteo == {}
     silver = to_silver(df)
@@ -66,7 +70,7 @@ def test_error_rate_zero_produces_all_clean_rows():
 
 def test_error_rate_one_injects_something_in_every_row():
     catalogos = _catalogos()
-    df, conteo = generar_ventas(catalogos, filas=30, error_rate=1.0, seed=2)
+    df, conteo = generar_ventas(catalogos, filas=30, error_rate=1.0, seed=2, hoy=HOY)
 
     assert df.height == 30
     assert sum(conteo.values()) == 30
@@ -78,7 +82,7 @@ def test_injecting_errors_produces_detectable_problems():
     ver numero_factura_vacio) - solo confirma que error_rate alto
     efectivamente produce filas detectables como problemáticas."""
     catalogos = _catalogos()
-    df, conteo = generar_ventas(catalogos, filas=100, error_rate=0.4, seed=3)
+    df, conteo = generar_ventas(catalogos, filas=100, error_rate=0.4, seed=3, hoy=HOY)
 
     silver = to_silver(df)
     gold = to_gold(silver, catalogos, hoy=HOY)
@@ -89,8 +93,8 @@ def test_injecting_errors_produces_detectable_problems():
 
 def test_same_seed_is_reproducible():
     catalogos = _catalogos()
-    df1, conteo1 = generar_ventas(catalogos, filas=20, error_rate=0.3, seed=42)
-    df2, conteo2 = generar_ventas(catalogos, filas=20, error_rate=0.3, seed=42)
+    df1, conteo1 = generar_ventas(catalogos, filas=20, error_rate=0.3, seed=42, hoy=HOY)
+    df2, conteo2 = generar_ventas(catalogos, filas=20, error_rate=0.3, seed=42, hoy=HOY)
 
     assert df1.equals(df2)
     assert conteo1 == conteo2
@@ -98,6 +102,6 @@ def test_same_seed_is_reproducible():
 
 def test_numero_factura_unico_sin_inyeccion_de_duplicados():
     catalogos = _catalogos()
-    df, conteo = generar_ventas(catalogos, filas=50, error_rate=0.0, seed=5)
+    df, conteo = generar_ventas(catalogos, filas=50, error_rate=0.0, seed=5, hoy=HOY)
 
     assert df["numero_factura"].n_unique() == 50

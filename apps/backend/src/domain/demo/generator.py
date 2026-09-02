@@ -38,7 +38,8 @@ class _Prepared:
     """Catálogos convertidos a listas/dicts de Python una sola vez, para
     no repetir filtros de Polars en cada fila del loop."""
 
-    def __init__(self, catalogos: CatalogosSnapshot):
+    def __init__(self, catalogos: CatalogosSnapshot, hoy: date):
+        self.hoy = hoy
         self.sedes_todas = catalogos.sedes.to_dicts()
         self.sedes_por_codigo = {s["codigo"]: s for s in self.sedes_todas}
         self.sedes_activas = [s for s in self.sedes_todas if s["activa"]]
@@ -55,7 +56,6 @@ class _Prepared:
         self.productos = catalogos.productos.to_dicts()
 
         self.codigos_descuento = catalogos.codigos_descuento.to_dicts()
-        hoy = date.today()
         self.codigos_vencidos = [c for c in self.codigos_descuento if c["vigencia_fin"] < hoy]
         self.codigos_con_sede_vigentes_hoy = [
             c
@@ -64,7 +64,7 @@ class _Prepared:
         ]
 
 
-def _clean_row(i: int, prep: _Prepared, rng: random.Random) -> dict:
+def _clean_row(i: int, prep: _Prepared, rng: random.Random, hoy: date) -> dict:
     sede = rng.choice(prep.sedes_activas)
 
     trabajadores_de_sede = prep.trabajadores_por_sede_activos.get(sede["codigo"])
@@ -75,7 +75,6 @@ def _clean_row(i: int, prep: _Prepared, rng: random.Random) -> dict:
     cantidad = rng.randint(1, 8)
     precio_unitario = producto["precio_lista"]
 
-    hoy = date.today()
     min_fecha = max(sede["fecha_apertura"], hoy - timedelta(days=90))
     rango_dias = max((hoy - min_fecha).days, 0)
     fecha = min_fecha + timedelta(days=rng.randint(0, rango_dias))
@@ -251,7 +250,7 @@ def _mut_margen_no_negativo(row, prep, rng, previas):
 
 def _mut_fecha_no_futura(row, prep, rng, previas):
     row = dict(row)
-    row["fecha"] = (date.today() + timedelta(days=rng.randint(5, 60))).isoformat()
+    row["fecha"] = (prep.hoy + timedelta(days=rng.randint(5, 60))).isoformat()
     return row
 
 
@@ -308,18 +307,22 @@ def generar_ventas(
     filas: int = 50,
     error_rate: float = 0.1,
     seed: int | None = None,
+    hoy: date | None = None,
 ) -> tuple[pl.DataFrame, dict[str, int]]:
     """Genera `filas` ventas contra `catalogos`. Cada fila tiene
     probabilidad `error_rate` de recibir UNA violación inyectada. `seed`
-    es opcional - sin él, cada llamada genera datos distintos."""
+    y `hoy` son opcionales - sin ellos, cada llamada genera datos
+    distintos contra la fecha real (igual que `to_gold`, `hoy` es
+    inyectable para que los tests no dependan del reloj del sistema)."""
     rng = random.Random(seed)
-    prep = _Prepared(catalogos)
+    hoy = hoy or date.today()
+    prep = _Prepared(catalogos, hoy)
     conteo: dict[str, int] = {}
     previas: list[str] = []
     generadas: list[dict] = []
 
     for i in range(1, filas + 1):
-        row = _clean_row(i, prep, rng)
+        row = _clean_row(i, prep, rng, hoy)
 
         if rng.random() < error_rate:
             candidatos = list(MUTADORES)
