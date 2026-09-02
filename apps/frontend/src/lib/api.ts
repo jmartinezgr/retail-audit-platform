@@ -1,4 +1,5 @@
 import type {
+  ColumnValidationResponse,
   GenerateExcelRequest,
   GenerateExcelResponse,
   GoldPageResponse,
@@ -9,6 +10,7 @@ import type {
   UploadListResponse,
   UploadStatusResponse,
 } from "@/types/api"
+import { getSessionId } from "@/lib/session"
 
 // El dev server de Vite reenvía /api -> el backend (ver vite.config.ts).
 // En prod, esto se vuelve la URL real del backend desplegado.
@@ -26,7 +28,10 @@ class ApiError extends Error {
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
-    headers: init?.body ? { "Content-Type": "application/json" } : undefined,
+    headers: {
+      ...(init?.body ? { "Content-Type": "application/json" } : {}),
+      "X-Client-Id": getSessionId(),
+    },
     ...init,
   })
   if (!res.ok) {
@@ -55,6 +60,9 @@ export const api = {
         `/uploads/confirm/${uploadId}`,
         { method: "POST" },
       ),
+
+    validateColumns: (uploadId: string) =>
+      request<ColumnValidationResponse>(`/uploads/${uploadId}/validate-columns`),
   },
 
   audits: {

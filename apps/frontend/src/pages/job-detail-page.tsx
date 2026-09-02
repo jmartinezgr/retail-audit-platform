@@ -4,6 +4,7 @@ import { useState } from "react"
 import { Link, useParams } from "react-router-dom"
 import { toast } from "sonner"
 
+import { ColumnCheck } from "@/components/app/column-check"
 import { GoldTable } from "@/components/app/gold-table"
 import { StatusBadge } from "@/components/app/status-badge"
 import { Button } from "@/components/ui/button"
@@ -114,7 +115,7 @@ export function JobDetailPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <Link to="/" className="text-muted-foreground flex w-fit items-center gap-1 text-sm hover:underline">
+      <Link to="/app" className="text-muted-foreground flex w-fit items-center gap-1 text-sm hover:underline">
         <ArrowLeft className="size-3.5" /> Volver
       </Link>
 
@@ -131,6 +132,8 @@ export function JobDetailPage() {
           </Button>
         </div>
       </div>
+
+      <ColumnCheck uploadId={uploadId} />
 
       {processMsg && <p className="text-muted-foreground text-sm">{processMsg}</p>}
 

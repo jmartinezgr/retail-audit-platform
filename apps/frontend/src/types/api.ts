@@ -68,6 +68,15 @@ export interface GoldSummaryResponse {
   counts: GoldSummaryRow[]
 }
 
+export interface ColumnValidationResponse {
+  upload_id: string
+  columnas_encontradas: string[]
+  columnas_faltantes: string[]
+  columnas_opcionales_presentes: string[]
+  columnas_extra: string[]
+  valido: boolean
+}
+
 export interface GenerateExcelRequest {
   filas: number
   error_rate: number

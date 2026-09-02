@@ -32,6 +32,7 @@ export function GoldTable({ uploadId }: { uploadId: string }) {
   const summaryQuery = useQuery({
     queryKey: ["gold-summary", uploadId],
     queryFn: () => api.audits.goldSummary(uploadId),
+    retry: false,
   })
 
   const goldQuery = useQuery({
@@ -44,7 +45,16 @@ export function GoldTable({ uploadId }: { uploadId: string }) {
         regla: regla === ALL ? undefined : regla,
         paso: paso === ALL ? undefined : paso === "true",
       }),
+    retry: false,
   })
+
+  if (summaryQuery.isError) {
+    return (
+      <p className="text-muted-foreground text-sm">
+        Todavía no existe la tabla "gold" para este upload. Procesa el pipeline primero.
+      </p>
+    )
+  }
 
   const reglas = Array.from(
     new Set((summaryQuery.data?.counts ?? []).map((c) => c.regla)),
