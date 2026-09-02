@@ -43,6 +43,7 @@ confidencialidad y porque el dominio retail se entiende sin contexto médico).
 | Consulta sobre el lake | DuckDB (`duckdb.sql(...)` directo sobre las tablas Delta) | El backend necesita servir resultados paginados/filtrados al frontend sin cargar todo a memoria ni agregar un motor aparte |
 | Re-run de gold | Endpoint separado (`run-gold`) que lee el silver ya guardado + catálogos en vivo, en vez de siempre rehacer bronze→silver→gold | Los catálogos (Postgres) pueden cambiar sin que el excel cambie — gold debe poder re-auditarse sin volver a subir el archivo |
 | Contenido de gold | Una fila por (factura, regla), **pase o falle** — no solo violaciones | Permite demostrar explícitamente qué se validó y pasó, no solo lo que falló |
+| Stack frontend | React + Vite + TypeScript, Tailwind + **shadcn/ui**, lucide-react (íconos), TanStack Query + TanStack Table, React Router | shadcn/ui no es una dependencia cerrada (componentes que se copian al proyecto, sobre Radix) — se ve profesional sin diseñar desde cero; TanStack Query/Table encajan directo con el polling de estado y la tabla de auditoría que ya estaban planeados |
 
 ## 3. Dominio ficticio: "Retail Chain Co."
 
@@ -276,6 +277,26 @@ más violaciones de las que el generador contó. Verificado end-to-end
 varias veces: cada discrepancia rastreada resultó ser una cascada real,
 no un bug.
 
+**Consulta paginada de gold vía DuckDB — hecho** (2026-09-02):
+`infrastructure/storage/duckdb_query.py` (`query_gold()`, `summary_gold()`)
+corre SQL real contra la tabla Delta de gold — `GET /audits/{id}/gold/query`
+(filtros `severidad`/`regla`/`sede_codigo`/`paso` + `limit`/`offset`) y
+`GET /audits/{id}/gold/summary` (conteo por regla/severidad/paso, para
+poblar filtros en el frontend). Probado contra 750,000 filas (50,000
+facturas × 15 reglas): agregación en 0.74s, página filtrada en 0.06s.
+Detalle importante: la extensión `delta` de DuckDB **no** respeta las
+variables legacy `SET s3_endpoint=...` — intenta resolver credenciales vía
+IMDS (metadata service de EC2) si no hay un `CREATE SECRET` configurado, y
+eso truena contra MinIO local. Hay que usar `CREATE SECRET` (mecanismo
+actual de DuckDB), no las `SET s3_*` de siempre.
+
+Bonus de este trabajo: al consultar gold con SQL real aparecieron filas
+con `paso = null` (ni true ni false) en `codigo_descuento_vigente` —
+`fecha` inválida (ya marcada por silver) + un código de descuento real
+hacía que la comparación de vigencia diera `null` en vez de caer a algún
+lado. Corregido en `domain/rules/engine.py` con el mismo patrón de guardas
+que ya usaban `fecha_no_futura`/`fecha_posterior_a_apertura`.
+
 Falta (todo lo demás):
 - Reglas **dinámicas** (JSONLogic/DSL + tabla `rule_definitions`
   editable desde frontend) — fase 7, ver §4.
@@ -283,13 +304,23 @@ Falta (todo lo demás):
   haga polling de progreso más granular que solo
   REQUESTED→UPLOADED→PROCESSING→COMPLETED/FAILED.
 
-## 7. Frontend — pantallas
+## 7. Frontend — stack y pantallas
 
+**Stack** (ver tabla de decisiones §2): React + Vite + TypeScript, Tailwind
++ shadcn/ui, lucide-react, TanStack Query (llamadas a la API + el polling
+que hoy hace `viewer.html` a mano), TanStack Table (la tabla de gold),
+React Router.
+
+**Pantallas**:
 1. **Subir excel**: drag & drop, o botón "generar excel de ejemplo" con
-   slider de `% de errores a inyectar` y `# de filas`.
-2. **Progreso del job**: polling simple sobre `/uploads/{id}/status`.
+   slider de `% de errores a inyectar` y `# de filas` — pega directo con
+   `POST /demo/generate-excel`.
+2. **Progreso del job**: polling sobre `/uploads/{id}/status`.
 3. **Resultado de auditoría**: tabla filtrable/paginada por severidad, tipo
-   de regla, sede — con la fila original y por qué falló.
+   de regla, sede — con la fila original y por qué falló. Ya tiene backend
+   listo: `GET /audits/{id}/gold/query` (filtros + paginación real vía
+   DuckDB) y `GET /audits/{id}/gold/summary` (conteos para poblar los
+   filtros/un resumen).
 4. **Reglas dinámicas** (opcional, fase 2): pantalla para ver/editar los
    umbrales de las reglas dinámicas y volver a procesar sin re-subir.
 

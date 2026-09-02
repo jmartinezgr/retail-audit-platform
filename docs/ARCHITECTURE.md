@@ -119,10 +119,16 @@ Implementaciones concretas, sin lógica de negocio.
   justo lo que permite re-ejecutar `gold` después de cambiar algo en un
   catálogo sin tocar bronze/silver. También la usa `api/demo/` para que
   el generador construya filas con datos reales.
-- *(pendiente)* `storage/duckdb_query.py` — helpers para correr SQL vía
-  DuckDB sobre las tablas Delta, si hace falta paginar/filtrar en el
-  backend en vez de traer la tabla completa a memoria (hoy `gold` cabe
-  cómodo en memoria para el tamaño de esta demo).
+- `storage/duckdb_query.py` — `query_gold()` (filtros + paginación real) y
+  `summary_gold()` (conteo por regla/severidad/paso), SQL directo contra
+  la tabla Delta de gold vía `delta_scan()`. Conexión nueva por llamada
+  (~160ms de overhead: instalar/cargar la extensión `delta` + crear el
+  secret — se midió, y para esta escala no vale la pena cachear la
+  conexión con la complejidad de thread-safety que traería). Probado
+  contra 750,000 filas: agregación 0.74s, página filtrada 0.06s.
+  **Importante**: la extensión `delta` NO respeta las variables legacy
+  `SET s3_endpoint=...` (intenta resolver credenciales vía IMDS si no
+  hay un secret, y truena contra MinIO) — hay que usar `CREATE SECRET`.
 
 #### Convención de rutas en el bucket
 
@@ -174,7 +180,12 @@ Ya existe:
 
   `GET /audits/{upload_id}/bronze`, `.../silver`, `.../gold` leen la
   tabla Delta correspondiente y la devuelven como preview JSON
-  (`LayerPreviewResponse`, genérico para cualquier capa).
+  (`LayerPreviewResponse`, genérico para cualquier capa) — un preview
+  fijo (primeras filas), no pensado para la tabla del frontend.
+  `GET /audits/{upload_id}/gold/query` (filtros `severidad`/`regla`/
+  `sede_codigo`/`paso` + `limit`/`offset`, vía `duckdb_query.query_gold`)
+  y `GET /audits/{upload_id}/gold/summary` (conteo por regla/severidad/
+  paso, vía `duckdb_query.summary_gold`) sí son para eso.
 - `api/demo/` — `POST /demo/generate-excel` (`filas`, `error_rate`) llama
   a `load_catalog_snapshot()` + `generar_ventas()`, sube el resultado a
   `demo/{uuid}/ventas_generadas.xlsx` en el bucket (`put_object_bytes`,
@@ -269,3 +280,17 @@ la app en producción (ej. `seed_catalog.py`). Se ejecutan con
   (`domain/rules/engine.py`) — no afecta excels reales (el round-trip por
   Excel ya normaliza celda vacía a `null`), pero sí el contrato
   documentado en `DATA_MODEL.md`, así que se corrigió en la raíz.
+- **2026-09-01**: `domain/demo/generator.py` reescrito para no llamar a
+  Polars por fila (`_Prepared` precomputa los catálogos a listas de
+  Python una sola vez) — 20,000 filas en ~0.6s. Límite de `filas` subido
+  de 1,000 a 50,000 en el schema.
+- **2026-09-02**: `generar_ventas` gana un `hoy` inyectable (igual que
+  `to_gold`) — un test con fecha fija empezó a fallar el día después de
+  escribirse porque el generador seguía usando `date.today()` real.
+- **2026-09-02**: agregado `infrastructure/storage/duckdb_query.py`
+  (`query_gold`, `summary_gold`) + `GET /audits/{id}/gold/query` y
+  `.../gold/summary` — paginación/filtros reales sobre gold vía SQL
+  (DuckDB + `delta_scan`), ya no solo el preview fijo. Encontrado en el
+  camino: `codigo_descuento_vigente` podía devolver `paso = null` (fecha
+  inválida + código real) — corregido con la misma guarda que ya usaban
+  las otras reglas de fecha.
