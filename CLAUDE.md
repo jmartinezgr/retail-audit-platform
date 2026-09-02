@@ -6,9 +6,10 @@ ficticia. Antes de tocar código, lee:
 
 - `docs/PLANNING.md` — qué se construye, decisiones de producto/stack, y
   por qué (dominio, reglas, deploy, fases).
-- `docs/ARCHITECTURE.md` — cómo se organiza el código del backend
-  (`domain/infrastructure/api`) y por qué se eligió así en vez de
-  "package by feature" o hexagonal estricto.
+- `docs/ARCHITECTURE.md` — cómo se organiza el código, backend
+  (`domain/infrastructure/api`, y por qué en vez de "package by feature"
+  o hexagonal estricto) y frontend (`apps/frontend/`, React + Vite +
+  shadcn/ui).
 - `docs/DATA_MODEL.md` — las entidades del dominio (catálogos + Venta) y
   el esquema de entrada/salida de cada capa del pipeline (qué columnas
   espera el excel, qué forma tiene bronze/silver/gold), con diagrama de
@@ -35,7 +36,7 @@ que navega uploads/bronze/silver/gold desde el navegador. Es intencional:
 ## Stack
 
 - Backend: Python (FastAPI, SQLAlchemy, Polars, `deltalake`, DuckDB).
-- Frontend: React + Vite.
+- Frontend: React + Vite + TypeScript, Tailwind + shadcn/ui, TanStack Query.
 - Storage: MinIO (local, vía `docker-compose.yml`) / Cloudflare R2 (prod).
 - DB operacional: Postgres.
 - No hay NestJS ni Spark en este proyecto — ver `PLANNING.md` y

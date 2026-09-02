@@ -307,22 +307,29 @@ Falta (todo lo demás):
 ## 7. Frontend — stack y pantallas
 
 **Stack** (ver tabla de decisiones §2): React + Vite + TypeScript, Tailwind
-+ shadcn/ui, lucide-react, TanStack Query (llamadas a la API + el polling
-que hoy hace `viewer.html` a mano), TanStack Table (la tabla de gold),
-React Router.
++ shadcn/ui (Radix, preset Nova — Lucide + Geist), TanStack Query, React
+Router. `TanStack Table` instalada pero sin usar todavía — la tabla de gold
+pagina en el servidor, no le hacía falta; queda lista para cuando una
+tabla necesite ordenar en memoria de verdad.
 
-**Pantallas**:
-1. **Subir excel**: drag & drop, o botón "generar excel de ejemplo" con
-   slider de `% de errores a inyectar` y `# de filas` — pega directo con
-   `POST /demo/generate-excel`.
-2. **Progreso del job**: polling sobre `/uploads/{id}/status`.
-3. **Resultado de auditoría**: tabla filtrable/paginada por severidad, tipo
-   de regla, sede — con la fila original y por qué falló. Ya tiene backend
-   listo: `GET /audits/{id}/gold/query` (filtros + paginación real vía
-   DuckDB) y `GET /audits/{id}/gold/summary` (conteos para poblar los
-   filtros/un resumen).
-4. **Reglas dinámicas** (opcional, fase 2): pantalla para ver/editar los
-   umbrales de las reglas dinámicas y volver a procesar sin re-subir.
+**Pantallas — hecho** (2026-09-02):
+1. **Home** (`pages/home-page.tsx`): generar excel sintético (filas +
+   error_rate) o subir uno propio — ambos caen al mismo flujo
+   `request-upload-url → PUT → confirm`. Lista de uploads recientes con
+   polling (`refetchInterval`).
+2. **Detalle del job** (`pages/job-detail-page.tsx`): un botón corre
+   bronze→silver→gold completo, esperando de verdad a que cada capa exista
+   (mismo arreglo que ya tenía `viewer.html` — el status no distingue
+   "silver listo" de "silver corriendo"). Pestañas bronze/silver (preview
+   simple) y gold (`components/app/gold-table.tsx`, filtros + paginación
+   real contra `GET /audits/{id}/gold/query` + `/gold/summary`).
+
+Probado en navegador de verdad (Playwright): sin errores de consola, carga
+contra datos reales (750,000 filas de gold, 50,000 facturas), filtros y
+paginación correctos, build de producción limpio.
+
+Falta: **reglas dinámicas** (opcional, fase 2 del frontend) — pantalla
+para ver/editar umbrales y volver a procesar sin re-subir.
 
 ## 8. Datos sintéticos
 
@@ -360,7 +367,7 @@ Script Python (Faker + numpy) que:
 3. ✅ Capa bronze + silver (parseo/tipado, sin reglas de negocio aún).
 4. ✅ Motor de reglas estáticas + capa gold + endpoint para consultar resultados.
 5. ✅ Generador de excels sintéticos con `error_rate`.
-6. Frontend: subir, ver progreso, ver tabla de auditoría — **siguiente**.
+6. ✅ Frontend: subir/generar, ver progreso, ver tabla de auditoría (ver §7).
 7. Reglas dinámicas editables (si alcanza el tiempo).
 8. Deploy en capas gratuitas, ajustar si hace falta el VPS de $5.
 

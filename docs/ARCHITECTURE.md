@@ -1,10 +1,11 @@
-# Arquitectura del backend
+# Arquitectura
 
 > Complementa a `PLANNING.md` (qué se construye y por qué, producto/roadmap)
 > y a `DATA_MODEL.md` (qué forma tienen los datos: entidades, esquema de
 > entrada/salida de cada capa). Este documento es sobre **cómo se organiza
-> el código**. Se actualiza cada vez que se agrega un módulo nuevo o se
-> toma una decisión estructural.
+> el código**, backend y frontend. Se actualiza cada vez que se agrega un
+> módulo nuevo o se toma una decisión estructural. Backend primero, frontend
+> más abajo (§ Frontend).
 
 ## El patrón: capas por responsabilidad técnica, no por feature
 
@@ -233,6 +234,43 @@ python -m pytest -v
 la app en producción (ej. `seed_catalog.py`). Se ejecutan con
 `python scripts/<archivo>.py` desde `apps/backend`, con el venv activo.
 
+## Frontend
+
+`apps/frontend/` — Vite + React + TypeScript. Estructura:
+
+```
+src/
+  types/api.ts         # espeja los schemas Pydantic del backend, a mano
+  lib/api.ts            # cliente HTTP tipado (fetch), un objeto `api.*` por router del backend
+  lib/pipeline.ts        # runFullPipeline() - corre bronze→silver→gold esperando cada capa de verdad
+  components/ui/         # shadcn/ui (generados, no se editan a mano salvo necesidad real)
+  components/app/        # componentes propios (layout, status-badge, gold-table)
+  pages/                  # una por ruta
+  App.tsx                 # rutas (react-router)
+  main.tsx                # QueryClientProvider + BrowserRouter + Toaster
+```
+
+**Por qué `lib/api.ts` y no llamar `fetch` directo en cada componente**: un
+solo lugar que sabe la forma de cada endpoint — si el backend cambia una
+ruta, se actualiza acá una vez. `types/api.ts` es manual por ahora (no
+generado desde el OpenAPI del backend); si el contrato empieza a
+desincronizarse seguido, generar con `openapi-typescript` es la mejora
+obvia.
+
+**Dev proxy, no CORS**: `vite.config.ts` reenvía `/api/*` →
+`http://127.0.0.1:8000` (con el prefijo quitado). El frontend real nunca
+necesita CORS en desarrollo — el `allow_origins=["*"]` que vive sin
+commitear en `main.py` es solo para el visor HTML provisional
+(`viewer.html`), no para esto. En producción, el backend desplegado sí
+necesita CORS acotado al dominio real del frontend (pendiente para la
+fase de deploy).
+
+**TanStack Table instalada, sin usar todavía**: la tabla de gold
+(`components/app/gold-table.tsx`) pagina y filtra en el servidor (DuckDB
+hace el trabajo pesado), así que una tabla headless no aportaba nada ahí
+— se armó con los primitivos de `components/ui/table`. Queda instalada
+para cuando una pantalla necesite ordenar/filtrar en memoria de verdad.
+
 ## Historial de cambios estructurales
 
 - **2026-09-01**: reorganizado de "package by feature" (`uploads/`,
@@ -294,3 +332,8 @@ la app en producción (ej. `seed_catalog.py`). Se ejecutan con
   camino: `codigo_descuento_vigente` podía devolver `paso = null` (fecha
   inválida + código real) — corregido con la misma guarda que ya usaban
   las otras reglas de fecha.
+- **2026-09-02**: scaffold de `apps/frontend/` (React + Vite + TS +
+  Tailwind + shadcn/ui) — primeras dos pantallas (home, detalle de job)
+  contra la API real, probadas en navegador con Playwright. Título de
+  este documento cambiado de "Arquitectura del backend" a "Arquitectura"
+  ahora que también cubre frontend.
