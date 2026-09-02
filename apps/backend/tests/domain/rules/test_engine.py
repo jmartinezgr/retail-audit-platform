@@ -151,6 +151,29 @@ def test_codigo_descuento_vencido_falla():
     assert not _paso(gold, "codigo_descuento_vigente")
 
 
+def test_fecha_invalida_con_codigo_real_no_produce_paso_nulo():
+    """fecha=None (silver ya la marcó inválida) + un código de descuento
+    real: la comparación de vigencia contra una fecha nula da null en
+    Polars (ni true ni false) - descuento_vigente debe pasar vacío, no
+    quedar en null."""
+    row = dict(CLEAN_SILVER_ROW, fecha=None, codigo_descuento="D1")
+    catalogos = _catalogos(
+        codigos_descuento=pl.DataFrame(
+            {
+                "codigo": ["D1"],
+                "tipo": ["PORCENTAJE"],
+                "valor": [10.0],
+                "vigencia_inicio": [date(2020, 1, 1)],
+                "vigencia_fin": [date(2030, 1, 1)],
+                "sede_codigo": pl.Series([None], dtype=pl.Utf8),
+            }
+        )
+    )
+    gold = to_gold(_silver([row]), catalogos, hoy=HOY)
+
+    assert _paso(gold, "codigo_descuento_vigente") is True
+
+
 def test_codigo_descuento_de_otra_sede_falla():
     row = dict(CLEAN_SILVER_ROW, codigo_descuento="D1")
     catalogos = _catalogos(

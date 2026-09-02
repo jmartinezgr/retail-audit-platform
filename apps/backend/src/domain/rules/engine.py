@@ -158,6 +158,7 @@ def _evaluar(df: pl.DataFrame, hoy: date) -> list[pl.DataFrame]:
     descuento_vigente = (
         ~tiene_descuento
         | pl.col("_descuento_tipo").is_null()
+        | pl.col("fecha").is_null()  # fecha inválida ya la marcó silver, no doble-penalizar
         | (
             (pl.col("fecha") >= pl.col("_descuento_vigencia_inicio"))
             & (pl.col("fecha") <= pl.col("_descuento_vigencia_fin"))
