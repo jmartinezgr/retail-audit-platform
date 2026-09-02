@@ -5,6 +5,8 @@ import { BrowserRouter } from "react-router-dom"
 
 import App from "@/App.tsx"
 import { Toaster } from "@/components/ui/sonner"
+import { I18nProvider } from "@/lib/i18n"
+import { ThemeProvider } from "@/lib/theme"
 
 import "./index.css"
 
@@ -19,11 +21,15 @@ const queryClient = new QueryClient({
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <App />
-        <Toaster />
-      </BrowserRouter>
-    </QueryClientProvider>
+    <ThemeProvider>
+      <I18nProvider>
+        <QueryClientProvider client={queryClient}>
+          <BrowserRouter>
+            <App />
+            <Toaster />
+          </BrowserRouter>
+        </QueryClientProvider>
+      </I18nProvider>
+    </ThemeProvider>
   </StrictMode>,
 )

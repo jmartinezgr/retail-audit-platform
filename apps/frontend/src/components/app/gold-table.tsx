@@ -18,12 +18,14 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { useI18n } from "@/lib/i18n"
 import { api } from "@/lib/api"
 
 const ALL = "__all__"
 const PAGE_SIZE = 25
 
 export function GoldTable({ uploadId }: { uploadId: string }) {
+  const { t } = useI18n()
   const [severidad, setSeveridad] = useState<string>(ALL)
   const [regla, setRegla] = useState<string>(ALL)
   const [paso, setPaso] = useState<string>(ALL)
@@ -49,11 +51,7 @@ export function GoldTable({ uploadId }: { uploadId: string }) {
   })
 
   if (summaryQuery.isError) {
-    return (
-      <p className="text-muted-foreground text-sm">
-        Todavía no existe la tabla "gold" para este upload. Procesa el pipeline primero.
-      </p>
-    )
+    return <p className="text-muted-foreground text-sm">{t("job.layerNotReady", { layer: "gold" })}</p>
   }
 
   const reglas = Array.from(
@@ -80,18 +78,20 @@ export function GoldTable({ uploadId }: { uploadId: string }) {
     <div className="flex flex-col gap-3">
       {summaryQuery.data && (
         <div className="text-muted-foreground text-sm">
-          {totalErrores.toLocaleString()} violaciones de {totalFilas.toLocaleString()}{" "}
-          evaluaciones totales
+          {t("gold.summary", {
+            violations: totalErrores.toLocaleString(),
+            total: totalFilas.toLocaleString(),
+          })}
         </div>
       )}
 
       <div className="flex flex-wrap gap-2">
         <Select value={severidad} onValueChange={resetPageAnd(setSeveridad)}>
           <SelectTrigger className="w-40">
-            <SelectValue placeholder="Severidad" />
+            <SelectValue placeholder={t("gold.filterSeverityAll")} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value={ALL}>Toda severidad</SelectItem>
+            <SelectItem value={ALL}>{t("gold.filterSeverityAll")}</SelectItem>
             <SelectItem value="ERROR">ERROR</SelectItem>
             <SelectItem value="WARNING">WARNING</SelectItem>
           </SelectContent>
@@ -99,10 +99,10 @@ export function GoldTable({ uploadId }: { uploadId: string }) {
 
         <Select value={regla} onValueChange={resetPageAnd(setRegla)}>
           <SelectTrigger className="w-64">
-            <SelectValue placeholder="Regla" />
+            <SelectValue placeholder={t("gold.filterRuleAll")} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value={ALL}>Toda regla</SelectItem>
+            <SelectItem value={ALL}>{t("gold.filterRuleAll")}</SelectItem>
             {reglas.map((r) => (
               <SelectItem key={r} value={r}>
                 {r}
@@ -113,12 +113,12 @@ export function GoldTable({ uploadId }: { uploadId: string }) {
 
         <Select value={paso} onValueChange={resetPageAnd(setPaso)}>
           <SelectTrigger className="w-40">
-            <SelectValue placeholder="Resultado" />
+            <SelectValue placeholder={t("gold.filterResultAll")} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value={ALL}>Pase o falle</SelectItem>
-            <SelectItem value="false">Solo violaciones</SelectItem>
-            <SelectItem value="true">Solo pasadas</SelectItem>
+            <SelectItem value={ALL}>{t("gold.filterResultAll")}</SelectItem>
+            <SelectItem value="false">{t("gold.filterOnlyViolations")}</SelectItem>
+            <SelectItem value="true">{t("gold.filterOnlyPassed")}</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -127,20 +127,20 @@ export function GoldTable({ uploadId }: { uploadId: string }) {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Factura</TableHead>
-              <TableHead>Sede</TableHead>
-              <TableHead>Fecha</TableHead>
-              <TableHead>Regla</TableHead>
-              <TableHead>Severidad</TableHead>
-              <TableHead>Resultado</TableHead>
-              <TableHead>Mensaje</TableHead>
+              <TableHead>{t("gold.colInvoice")}</TableHead>
+              <TableHead>{t("gold.colStore")}</TableHead>
+              <TableHead>{t("gold.colDate")}</TableHead>
+              <TableHead>{t("gold.colRule")}</TableHead>
+              <TableHead>{t("gold.colSeverity")}</TableHead>
+              <TableHead>{t("gold.colResult")}</TableHead>
+              <TableHead>{t("gold.colMessage")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {goldQuery.isLoading && (
               <TableRow>
                 <TableCell colSpan={7} className="text-muted-foreground text-center">
-                  Cargando...
+                  {t("gold.loading")}
                 </TableCell>
               </TableRow>
             )}
@@ -159,9 +159,9 @@ export function GoldTable({ uploadId }: { uploadId: string }) {
                   {row.paso === null ? (
                     <span className="text-muted-foreground">—</span>
                   ) : row.paso ? (
-                    <span className="text-emerald-600 dark:text-emerald-400">OK</span>
+                    <span className="text-emerald-600 dark:text-emerald-400">{t("gold.pass")}</span>
                   ) : (
-                    <span className="font-medium text-red-600 dark:text-red-400">Falla</span>
+                    <span className="font-medium text-red-600 dark:text-red-400">{t("gold.fail")}</span>
                   )}
                 </TableCell>
                 <TableCell className="text-muted-foreground max-w-xs truncate">
@@ -175,7 +175,9 @@ export function GoldTable({ uploadId }: { uploadId: string }) {
 
       <div className="flex items-center justify-between">
         <span className="text-muted-foreground text-sm">
-          {total > 0 ? `${from}–${to} de ${total.toLocaleString()}` : "0 resultados"}
+          {total > 0
+            ? t("gold.pageInfo", { from, to, total: total.toLocaleString() })
+            : t("gold.noResults")}
         </span>
         <div className="flex gap-2">
           <Button
@@ -184,7 +186,7 @@ export function GoldTable({ uploadId }: { uploadId: string }) {
             disabled={page === 0}
             onClick={() => setPage((p) => Math.max(0, p - 1))}
           >
-            Anterior
+            {t("gold.previous")}
           </Button>
           <Button
             variant="outline"
@@ -192,7 +194,7 @@ export function GoldTable({ uploadId }: { uploadId: string }) {
             disabled={to >= total}
             onClick={() => setPage((p) => p + 1)}
           >
-            Siguiente
+            {t("gold.next")}
           </Button>
         </div>
       </div>

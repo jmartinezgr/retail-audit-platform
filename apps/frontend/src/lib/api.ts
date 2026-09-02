@@ -123,7 +123,7 @@ export async function uploadToPresignedUrl(
 ): Promise<void> {
   const res = await fetch(uploadUrl, { method: "PUT", body: blob })
   if (!res.ok) {
-    throw new ApiError(res.status, "No se pudo subir el archivo a MinIO")
+    throw new ApiError(res.status, "Could not upload the file to storage")
   }
 }
 

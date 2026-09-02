@@ -1,5 +1,13 @@
 import { api } from "@/lib/api"
 
+export type PipelineStatus =
+  | { type: "running" }
+  | { type: "waitingLayer"; layer: "silver" | "gold"; seconds: number }
+  | { type: "silverReady" }
+  | { type: "complete" }
+  | { type: "timeoutSilver" }
+  | { type: "timeoutGold" }
+
 /**
  * El status del upload no distingue "silver ya terminó" de "silver
  * todavía corriendo" (ambos se ven PROCESSING) - así que en vez de
@@ -9,7 +17,7 @@ import { api } from "@/lib/api"
 async function waitForLayer(
   uploadId: string,
   layer: "silver" | "gold",
-  onStatus: (msg: string) => void,
+  onStatus: (status: PipelineStatus) => void,
   timeoutMs = 120_000,
   intervalMs = 800,
 ): Promise<boolean> {
@@ -20,7 +28,7 @@ async function waitForLayer(
       return true
     } catch {
       const elapsed = Math.round((Date.now() - start) / 1000)
-      onStatus(`Esperando "${layer}"... (${elapsed}s)`)
+      onStatus({ type: "waitingLayer", layer, seconds: elapsed })
       await new Promise((r) => setTimeout(r, intervalMs))
     }
   }
@@ -29,26 +37,22 @@ async function waitForLayer(
 
 export async function runFullPipeline(
   uploadId: string,
-  onStatus: (msg: string) => void,
+  onStatus: (status: PipelineStatus) => void,
 ): Promise<boolean> {
-  onStatus("Disparando bronze + silver...")
+  onStatus({ type: "running" })
   await api.audits.run(uploadId)
 
   const silverReady = await waitForLayer(uploadId, "silver", onStatus)
   if (!silverReady) {
-    onStatus("Timeout esperando silver.")
+    onStatus({ type: "timeoutSilver" })
     return false
   }
 
-  onStatus("Silver listo. Disparando gold...")
+  onStatus({ type: "silverReady" })
   await api.audits.runGold(uploadId)
 
   const goldReady = await waitForLayer(uploadId, "gold", onStatus)
-  onStatus(
-    goldReady
-      ? "Pipeline completo (bronze → silver → gold)."
-      : "Timeout esperando gold.",
-  )
+  onStatus({ type: goldReady ? "complete" : "timeoutGold" })
   return goldReady
 }
 

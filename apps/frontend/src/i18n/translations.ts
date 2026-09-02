@@ -1,0 +1,207 @@
+// Diccionario de traducciones - solo la interfaz (botones, textos
+// estáticos). Los datos que vienen del backend (nombres de reglas,
+// mensajes de gold, catálogos) NO se traducen acá - viven en español
+// porque el dominio (una cadena retail colombiana) es en español, igual
+// que pasaría en una app bilingüe real. Ver ARCHITECTURE.md § Frontend.
+
+const en = {
+  // Layout
+  "layout.tagline": "layered data audit engine",
+  "layout.aboutProject": "About the project",
+  "layout.back": "Back",
+
+  // Landing
+  "landing.badge": "Portfolio project",
+  "landing.title": "A layered data audit engine",
+  "landing.subtitle":
+    "Upload a sales spreadsheet from a fictional retail chain and watch it get audited automatically against 15 business rules — bronze, silver and gold, lakehouse-style.",
+  "landing.tryDemo": "Try the demo",
+  "landing.howItWorksTitle": "How it works",
+  "landing.howItWorksSubtitle":
+    "The same layered pattern (medallion architecture) used in real data pipelines, applied to a simple domain so it can be shown end to end.",
+  "landing.bronzeTitle": "Bronze",
+  "landing.bronzeDesc": "The raw spreadsheet exactly as it arrived, no typing or validation. Full traceability.",
+  "landing.silverTitle": "Silver",
+  "landing.silverDesc":
+    "Structural typing and validation (dates, numbers, required fields). No row is ever dropped.",
+  "landing.goldTitle": "Gold",
+  "landing.goldDesc":
+    "15 business rules checked against the master catalogs: existence, validity windows, margins, totals reconciliation.",
+  "landing.originTitle": "Where the idea comes from",
+  "landing.originBody":
+    "The design is inspired by a real rules engine that processed and audited invoicing for a Colombian health insurer using Databricks: master catalogs, cross-validation, and an explainable audit layer. Here the domain is a fictional retail chain — no Spark, no real data — but the pattern (layers, traceability, static and dynamic rules) is the same.",
+  "landing.stackTitle": "Stack",
+  "landing.ctaTitle": "Ready to see it work?",
+  "landing.ctaButton": "Generate data and audit",
+
+  // Home
+  "home.generateTitle": "Generate synthetic data",
+  "home.generateDesc": "Sales rows against the real catalogs, with errors injected on purpose.",
+  "home.rowsLabel": "Rows (up to 50,000)",
+  "home.errorRateLabel": "Error rate (0–1)",
+  "home.generateButton": "Generate and upload",
+  "home.uploadTitle": "Upload an excel",
+  "home.uploadDesc": "Upload your own sales file to audit it.",
+  "home.uploadButton": "Upload excel",
+  "home.recentUploads": "Recent uploads",
+  "home.noUploads": "No uploads yet. Generate data or upload an excel above.",
+  "home.toastGenerated": "rows generated, {count} with an injected error",
+  "home.toastUploaded": "Excel uploaded",
+  "home.toastGenerateError": "Error generating the excel",
+  "home.toastUploadError": "Error uploading the file",
+  "home.statusRequestingUrl": "Requesting presigned URL...",
+  "home.statusUploadingMinio": "Uploading to storage...",
+  "home.statusConfirming": "Confirming...",
+  "home.statusDone": "Done.",
+  "home.statusSelectFileFirst": "Select a file first.",
+
+  // Job detail
+  "job.process": "Process (bronze → silver → gold)",
+  "job.refreshStatus": "Refresh status",
+  "job.tabBronze": "Bronze",
+  "job.tabSilver": "Silver",
+  "job.tabGold": "Gold",
+  "job.pipelineRunning": "Running bronze + silver...",
+  "job.pipelineWaitingLayer": "Waiting for \"{layer}\"... ({seconds}s)",
+  "job.pipelineSilverReady": "Silver ready. Running gold...",
+  "job.pipelineComplete": "Pipeline complete (bronze → silver → gold).",
+  "job.pipelineTimeoutSilver": "Timed out waiting for silver.",
+  "job.pipelineTimeoutGold": "Timed out waiting for gold.",
+  "job.toastPipelineComplete": "Pipeline complete",
+  "job.toastPipelineTimeout": "The pipeline didn't finish in time, check the status",
+  "job.toastPipelineError": "Error running the pipeline",
+  "job.layerNotReady": 'The "{layer}" table doesn\'t exist yet for this upload. Process the pipeline first.',
+  "job.layerLoading": "Loading...",
+  "job.layerRowCount": "{total} total rows, showing {shown}",
+
+  // Column check
+  "columnCheck.checking": "Checking excel columns...",
+  "columnCheck.unavailable": "The file couldn't be checked yet.",
+  "columnCheck.validTitle": "Columns look good",
+  "columnCheck.validBody": "All expected columns are present{optional}. Ready to process.",
+  "columnCheck.validOptional": " (including optional: {list})",
+  "columnCheck.invalidTitle": "Missing required columns",
+  "columnCheck.extraColumns": "Unrecognized columns in the file: {list}",
+
+  // Gold table
+  "gold.summary": "{violations} violations out of {total} total evaluations",
+  "gold.filterSeverityAll": "Any severity",
+  "gold.filterRuleAll": "Any rule",
+  "gold.filterResultAll": "Pass or fail",
+  "gold.filterOnlyViolations": "Violations only",
+  "gold.filterOnlyPassed": "Passed only",
+  "gold.colInvoice": "Invoice",
+  "gold.colStore": "Store",
+  "gold.colDate": "Date",
+  "gold.colRule": "Rule",
+  "gold.colSeverity": "Severity",
+  "gold.colResult": "Result",
+  "gold.colMessage": "Message",
+  "gold.loading": "Loading...",
+  "gold.pass": "OK",
+  "gold.fail": "Fails",
+  "gold.previous": "Previous",
+  "gold.next": "Next",
+  "gold.pageInfo": "{from}–{to} of {total}",
+  "gold.noResults": "0 results",
+} as const
+
+const es: Record<keyof typeof en, string> = {
+  "layout.tagline": "motor de auditoría de datos por capas",
+  "layout.aboutProject": "Sobre el proyecto",
+  "layout.back": "Volver",
+
+  "landing.badge": "Proyecto de portafolio",
+  "landing.title": "Un motor de auditoría de datos, por capas",
+  "landing.subtitle":
+    "Sube un excel de ventas de una cadena de tiendas ficticia y mira cómo se audita automáticamente contra 15 reglas de negocio — bronze, silver y gold, estilo lakehouse.",
+  "landing.tryDemo": "Probar la demo",
+  "landing.howItWorksTitle": "Cómo funciona",
+  "landing.howItWorksSubtitle":
+    "El mismo patrón de capas (medallion architecture) que se usa en pipelines de datos reales, aplicado a un dominio simple para poder mostrarlo de punta a punta.",
+  "landing.bronzeTitle": "Bronze",
+  "landing.bronzeDesc": "El excel crudo tal cual llegó, sin tipar ni validar nada. Trazabilidad total.",
+  "landing.silverTitle": "Silver",
+  "landing.silverDesc":
+    "Tipado y validación estructural (fechas, números, campos obligatorios). Ninguna fila se descarta.",
+  "landing.goldTitle": "Gold",
+  "landing.goldDesc":
+    "15 reglas de negocio contra los catálogos: existencia, vigencias, márgenes, cuadre de totales.",
+  "landing.originTitle": "De dónde viene la idea",
+  "landing.originBody":
+    "El diseño está inspirado en un motor de reglas real que procesaba y auditaba facturación de una EPS colombiana con Databricks: catálogos maestros, validación cruzada, y una capa de auditoría explicable. Acá el dominio es una cadena de tiendas ficticia — sin Spark ni datos reales — pero el patrón (capas, trazabilidad, reglas estáticas y dinámicas) es el mismo.",
+  "landing.stackTitle": "Stack",
+  "landing.ctaTitle": "¿Listo para verlo funcionar?",
+  "landing.ctaButton": "Generar datos y auditar",
+
+  "home.generateTitle": "Generar datos sintéticos",
+  "home.generateDesc": "Filas de venta contra los catálogos reales, con errores inyectados a propósito.",
+  "home.rowsLabel": "Filas (hasta 50,000)",
+  "home.errorRateLabel": "Tasa de error (0–1)",
+  "home.generateButton": "Generar y subir",
+  "home.uploadTitle": "Subir un excel",
+  "home.uploadDesc": "Sube tu propio archivo de ventas para auditarlo.",
+  "home.uploadButton": "Subir excel",
+  "home.recentUploads": "Uploads recientes",
+  "home.noUploads": "Todavía no hay uploads. Genera datos o sube un excel arriba.",
+  "home.toastGenerated": "filas generadas, {count} con error inyectado",
+  "home.toastUploaded": "Excel subido",
+  "home.toastGenerateError": "Error generando el excel",
+  "home.toastUploadError": "Error subiendo el archivo",
+  "home.statusRequestingUrl": "Pidiendo URL prefirmada...",
+  "home.statusUploadingMinio": "Subiendo a almacenamiento...",
+  "home.statusConfirming": "Confirmando...",
+  "home.statusDone": "Listo.",
+  "home.statusSelectFileFirst": "Selecciona un archivo primero.",
+
+  "job.process": "Procesar (bronze → silver → gold)",
+  "job.refreshStatus": "Refrescar estado",
+  "job.tabBronze": "Bronze",
+  "job.tabSilver": "Silver",
+  "job.tabGold": "Gold",
+  "job.pipelineRunning": "Disparando bronze + silver...",
+  "job.pipelineWaitingLayer": 'Esperando "{layer}"... ({seconds}s)',
+  "job.pipelineSilverReady": "Silver listo. Disparando gold...",
+  "job.pipelineComplete": "Pipeline completo (bronze → silver → gold).",
+  "job.pipelineTimeoutSilver": "Timeout esperando silver.",
+  "job.pipelineTimeoutGold": "Timeout esperando gold.",
+  "job.toastPipelineComplete": "Pipeline completo",
+  "job.toastPipelineTimeout": "El pipeline no terminó a tiempo, revisa el estado",
+  "job.toastPipelineError": "Error corriendo el pipeline",
+  "job.layerNotReady": 'Todavía no existe la tabla "{layer}" para este upload. Procesa el pipeline primero.',
+  "job.layerLoading": "Cargando...",
+  "job.layerRowCount": "{total} filas totales, mostrando {shown}",
+
+  "columnCheck.checking": "Revisando columnas del excel...",
+  "columnCheck.unavailable": "No se pudo revisar el archivo todavía.",
+  "columnCheck.validTitle": "Columnas correctas",
+  "columnCheck.validBody": "Todas las columnas esperadas están presentes{optional}. Listo para procesar.",
+  "columnCheck.validOptional": " (incluye opcionales: {list})",
+  "columnCheck.invalidTitle": "Faltan columnas obligatorias",
+  "columnCheck.extraColumns": "Columnas no reconocidas en el archivo: {list}",
+
+  "gold.summary": "{violations} violaciones de {total} evaluaciones totales",
+  "gold.filterSeverityAll": "Toda severidad",
+  "gold.filterRuleAll": "Toda regla",
+  "gold.filterResultAll": "Pase o falle",
+  "gold.filterOnlyViolations": "Solo violaciones",
+  "gold.filterOnlyPassed": "Solo pasadas",
+  "gold.colInvoice": "Factura",
+  "gold.colStore": "Sede",
+  "gold.colDate": "Fecha",
+  "gold.colRule": "Regla",
+  "gold.colSeverity": "Severidad",
+  "gold.colResult": "Resultado",
+  "gold.colMessage": "Mensaje",
+  "gold.loading": "Cargando...",
+  "gold.pass": "OK",
+  "gold.fail": "Falla",
+  "gold.previous": "Anterior",
+  "gold.next": "Siguiente",
+  "gold.pageInfo": "{from}–{to} de {total}",
+  "gold.noResults": "0 resultados",
+}
+
+export const translations = { en, es }
+export type Locale = keyof typeof translations
+export type TranslationKey = keyof typeof en

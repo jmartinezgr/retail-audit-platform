@@ -17,8 +17,9 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { useI18n } from "@/lib/i18n"
 import { api } from "@/lib/api"
-import { runFullPipeline } from "@/lib/pipeline"
+import { runFullPipeline, type PipelineStatus } from "@/lib/pipeline"
 
 function LayerPreviewTable({
   uploadId,
@@ -27,18 +28,17 @@ function LayerPreviewTable({
   uploadId: string
   layer: "bronze" | "silver"
 }) {
+  const { t } = useI18n()
   const query = useQuery({
     queryKey: ["layer", uploadId, layer],
     queryFn: () => api.audits.layerPreview(uploadId, layer),
     retry: false,
   })
 
-  if (query.isLoading) return <p className="text-muted-foreground text-sm">Cargando...</p>
+  if (query.isLoading) return <p className="text-muted-foreground text-sm">{t("job.layerLoading")}</p>
   if (query.isError) {
     return (
-      <p className="text-muted-foreground text-sm">
-        Todavía no existe la tabla "{layer}" para este upload. Procesa el pipeline primero.
-      </p>
+      <p className="text-muted-foreground text-sm">{t("job.layerNotReady", { layer })}</p>
     )
   }
   if (!query.data) return null
@@ -46,7 +46,10 @@ function LayerPreviewTable({
   return (
     <div className="flex flex-col gap-2">
       <p className="text-muted-foreground text-sm">
-        {query.data.row_count.toLocaleString()} filas totales, mostrando {query.data.preview.length}
+        {t("job.layerRowCount", {
+          total: query.data.row_count.toLocaleString(),
+          shown: query.data.preview.length,
+        })}
       </p>
       <div className="overflow-auto rounded-md border">
         <Table>
@@ -83,6 +86,7 @@ function formatCell(value: unknown): string {
 export function JobDetailPage() {
   const { uploadId } = useParams<{ uploadId: string }>()
   const queryClient = useQueryClient()
+  const { t } = useI18n()
   const [processing, setProcessing] = useState(false)
   const [processMsg, setProcessMsg] = useState<string | null>(null)
 
@@ -93,19 +97,38 @@ export function JobDetailPage() {
     refetchInterval: (query) => (query.state.data?.status === "PROCESSING" ? 2000 : false),
   })
 
+  function formatPipelineStatus(status: PipelineStatus): string {
+    switch (status.type) {
+      case "running":
+        return t("job.pipelineRunning")
+      case "waitingLayer":
+        return t("job.pipelineWaitingLayer", { layer: status.layer, seconds: status.seconds })
+      case "silverReady":
+        return t("job.pipelineSilverReady")
+      case "complete":
+        return t("job.pipelineComplete")
+      case "timeoutSilver":
+        return t("job.pipelineTimeoutSilver")
+      case "timeoutGold":
+        return t("job.pipelineTimeoutGold")
+    }
+  }
+
   async function handleProcess() {
     if (!uploadId) return
     setProcessing(true)
     try {
-      const ok = await runFullPipeline(uploadId, setProcessMsg)
-      if (ok) toast.success("Pipeline completo")
-      else toast.error("El pipeline no terminó a tiempo, revisa el estado")
+      const ok = await runFullPipeline(uploadId, (status) =>
+        setProcessMsg(formatPipelineStatus(status)),
+      )
+      if (ok) toast.success(t("job.toastPipelineComplete"))
+      else toast.error(t("job.toastPipelineTimeout"))
       await queryClient.invalidateQueries({ queryKey: ["upload-status", uploadId] })
       await queryClient.invalidateQueries({ queryKey: ["layer", uploadId] })
       await queryClient.invalidateQueries({ queryKey: ["gold-summary", uploadId] })
       await queryClient.invalidateQueries({ queryKey: ["gold-query", uploadId] })
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Error corriendo el pipeline")
+      toast.error(e instanceof Error ? e.message : t("job.toastPipelineError"))
     } finally {
       setProcessing(false)
     }
@@ -116,7 +139,7 @@ export function JobDetailPage() {
   return (
     <div className="flex flex-col gap-4">
       <Link to="/app" className="text-muted-foreground flex w-fit items-center gap-1 text-sm hover:underline">
-        <ArrowLeft className="size-3.5" /> Volver
+        <ArrowLeft className="size-3.5" /> {t("layout.back")}
       </Link>
 
       <div className="flex items-center justify-between">
@@ -128,7 +151,7 @@ export function JobDetailPage() {
           {statusQuery.data && <StatusBadge status={statusQuery.data.status} />}
           <Button onClick={handleProcess} disabled={processing}>
             {processing ? <Loader2 className="animate-spin" /> : <Play />}
-            Procesar (bronze → silver → gold)
+            {t("job.process")}
           </Button>
         </div>
       </div>
@@ -139,9 +162,9 @@ export function JobDetailPage() {
 
       <Tabs defaultValue="gold">
         <TabsList>
-          <TabsTrigger value="bronze">Bronze</TabsTrigger>
-          <TabsTrigger value="silver">Silver</TabsTrigger>
-          <TabsTrigger value="gold">Gold</TabsTrigger>
+          <TabsTrigger value="bronze">{t("job.tabBronze")}</TabsTrigger>
+          <TabsTrigger value="silver">{t("job.tabSilver")}</TabsTrigger>
+          <TabsTrigger value="gold">{t("job.tabGold")}</TabsTrigger>
         </TabsList>
         <TabsContent value="bronze">
           <LayerPreviewTable uploadId={uploadId} layer="bronze" />

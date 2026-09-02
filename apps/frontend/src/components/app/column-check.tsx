@@ -2,9 +2,11 @@ import { useQuery } from "@tanstack/react-query"
 import { AlertTriangle, CheckCircle2, Loader2 } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
+import { useI18n } from "@/lib/i18n"
 import { api } from "@/lib/api"
 
 export function ColumnCheck({ uploadId }: { uploadId: string }) {
+  const { t } = useI18n()
   const query = useQuery({
     queryKey: ["validate-columns", uploadId],
     queryFn: () => api.uploads.validateColumns(uploadId),
@@ -14,17 +16,13 @@ export function ColumnCheck({ uploadId }: { uploadId: string }) {
   if (query.isLoading) {
     return (
       <div className="text-muted-foreground flex items-center gap-2 text-sm">
-        <Loader2 className="size-4 animate-spin" /> Revisando columnas del excel...
+        <Loader2 className="size-4 animate-spin" /> {t("columnCheck.checking")}
       </div>
     )
   }
 
   if (query.isError || !query.data) {
-    return (
-      <p className="text-muted-foreground text-sm">
-        No se pudo revisar el archivo todavía.
-      </p>
-    )
+    return <p className="text-muted-foreground text-sm">{t("columnCheck.unavailable")}</p>
   }
 
   const { valido, columnas_faltantes, columnas_extra, columnas_opcionales_presentes } =
@@ -36,14 +34,15 @@ export function ColumnCheck({ uploadId }: { uploadId: string }) {
         <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
         <div>
           <p className="font-medium text-emerald-700 dark:text-emerald-400">
-            Columnas correctas
+            {t("columnCheck.validTitle")}
           </p>
           <p className="text-muted-foreground">
-            Todas las columnas esperadas están presentes
-            {columnas_opcionales_presentes.length > 0 && (
-              <> (incluye opcionales: {columnas_opcionales_presentes.join(", ")})</>
-            )}
-            . Listo para procesar.
+            {t("columnCheck.validBody", {
+              optional:
+                columnas_opcionales_presentes.length > 0
+                  ? t("columnCheck.validOptional", { list: columnas_opcionales_presentes.join(", ") })
+                  : "",
+            })}
           </p>
         </div>
       </div>
@@ -55,7 +54,7 @@ export function ColumnCheck({ uploadId }: { uploadId: string }) {
       <AlertTriangle className="mt-0.5 size-4 shrink-0 text-red-600 dark:text-red-400" />
       <div className="flex flex-col gap-1.5">
         <p className="font-medium text-red-700 dark:text-red-400">
-          Faltan columnas obligatorias
+          {t("columnCheck.invalidTitle")}
         </p>
         <div className="flex flex-wrap gap-1">
           {columnas_faltantes.map((c) => (
@@ -66,7 +65,7 @@ export function ColumnCheck({ uploadId }: { uploadId: string }) {
         </div>
         {columnas_extra.length > 0 && (
           <p className="text-muted-foreground">
-            Columnas no reconocidas en el archivo: {columnas_extra.join(", ")}
+            {t("columnCheck.extraColumns", { list: columnas_extra.join(", ") })}
           </p>
         )}
       </div>

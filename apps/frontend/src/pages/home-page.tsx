@@ -9,12 +9,14 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { useI18n } from "@/lib/i18n"
 import { api, uploadFile } from "@/lib/api"
 import { downloadBlobToDisk } from "@/lib/pipeline"
 
 export function HomePage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const { t } = useI18n()
 
   const uploadsQuery = useQuery({
     queryKey: ["uploads"],
@@ -41,12 +43,12 @@ export function HomePage() {
 
       const uploadId = await uploadFile(blob, filename)
       toast.success(
-        `Generadas ${gen.filas_totales} filas, ${gen.filas_con_error} con error inyectado`,
+        `${gen.filas_totales} ${t("home.toastGenerated", { count: gen.filas_con_error })}`,
       )
       await queryClient.invalidateQueries({ queryKey: ["uploads"] })
       navigate(`/jobs/${uploadId}`)
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Error generando el excel")
+      toast.error(e instanceof Error ? e.message : t("home.toastGenerateError"))
     } finally {
       setGenerating(false)
     }
@@ -57,11 +59,11 @@ export function HomePage() {
     setUploading(true)
     try {
       const uploadId = await uploadFile(file, file.name)
-      toast.success("Excel subido")
+      toast.success(t("home.toastUploaded"))
       await queryClient.invalidateQueries({ queryKey: ["uploads"] })
       navigate(`/jobs/${uploadId}`)
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Error subiendo el archivo")
+      toast.error(e instanceof Error ? e.message : t("home.toastUploadError"))
     } finally {
       setUploading(false)
     }
@@ -73,16 +75,14 @@ export function HomePage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Wand2 className="size-4" /> Generar datos sintéticos
+              <Wand2 className="size-4" /> {t("home.generateTitle")}
             </CardTitle>
-            <CardDescription>
-              Filas de venta contra los catálogos reales, con errores inyectados a propósito.
-            </CardDescription>
+            <CardDescription>{t("home.generateDesc")}</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
             <div className="grid grid-cols-2 gap-3">
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="filas">Filas (hasta 50,000)</Label>
+                <Label htmlFor="filas">{t("home.rowsLabel")}</Label>
                 <Input
                   id="filas"
                   type="number"
@@ -93,7 +93,7 @@ export function HomePage() {
                 />
               </div>
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="errorRate">Tasa de error (0–1)</Label>
+                <Label htmlFor="errorRate">{t("home.errorRateLabel")}</Label>
                 <Input
                   id="errorRate"
                   type="number"
@@ -107,7 +107,7 @@ export function HomePage() {
             </div>
             <Button onClick={handleGenerate} disabled={generating}>
               {generating ? <Loader2 className="animate-spin" /> : <Wand2 />}
-              Generar y subir
+              {t("home.generateButton")}
             </Button>
           </CardContent>
         </Card>
@@ -115,11 +115,9 @@ export function HomePage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Upload className="size-4" /> Subir un excel
+              <Upload className="size-4" /> {t("home.uploadTitle")}
             </CardTitle>
-            <CardDescription>
-              Sube tu propio archivo de ventas para auditarlo.
-            </CardDescription>
+            <CardDescription>{t("home.uploadDesc")}</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
             <Input
@@ -129,19 +127,19 @@ export function HomePage() {
             />
             <Button onClick={handleUpload} disabled={!file || uploading} variant="secondary">
               {uploading ? <Loader2 className="animate-spin" /> : <Upload />}
-              Subir excel
+              {t("home.uploadButton")}
             </Button>
           </CardContent>
         </Card>
       </div>
 
       <div>
-        <h2 className="mb-3 text-lg font-semibold">Uploads recientes</h2>
-        {uploadsQuery.isLoading && <p className="text-muted-foreground text-sm">Cargando...</p>}
+        <h2 className="mb-3 text-lg font-semibold">{t("home.recentUploads")}</h2>
+        {uploadsQuery.isLoading && (
+          <p className="text-muted-foreground text-sm">{t("gold.loading")}</p>
+        )}
         {uploadsQuery.data && uploadsQuery.data.uploads.length === 0 && (
-          <p className="text-muted-foreground text-sm">
-            Todavía no hay uploads. Genera datos o sube un excel arriba.
-          </p>
+          <p className="text-muted-foreground text-sm">{t("home.noUploads")}</p>
         )}
         <div className="grid gap-2">
           {uploadsQuery.data?.uploads.map((u) => (

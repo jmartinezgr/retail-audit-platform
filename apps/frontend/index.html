@@ -4,7 +4,20 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>frontend</title>
+    <title>AuditLake</title>
+    <script>
+      // Aplica el tema ANTES de que React monte, para no hacer flash del
+      // tema equivocado (leer localStorage + preferencia del sistema).
+      (function () {
+        try {
+          var stored = localStorage.getItem("auditlake_theme")
+          var dark =
+            stored === "dark" ||
+            (!stored && window.matchMedia("(prefers-color-scheme: dark)").matches)
+          document.documentElement.classList.toggle("dark", dark)
+        } catch (e) {}
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>
