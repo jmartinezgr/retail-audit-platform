@@ -27,9 +27,18 @@ const en = {
   "landing.goldTitle": "Gold",
   "landing.goldDesc":
     "15 business rules checked against the master catalogs: existence, validity windows, margins, totals reconciliation.",
+  "landing.validationTitle": "How a rule validates",
+  "landing.validationSubtitle":
+    "Every rule falls into one of two categories, depending on where the truth it checks against comes from.",
+  "landing.endogenousTitle": "Endogenous — self-consistency",
+  "landing.endogenousDesc":
+    "The row is checked against itself, no external source involved. Example: factura_cuadra — total must equal quantity × unit price − discount, within a 0.01 tolerance.",
+  "landing.exogenousTitle": "Exogenous — cross-referenced",
+  "landing.exogenousDesc":
+    "The row is checked against another system of record: the master catalogs. Example: trabajador_pertenece_a_sede — does this worker actually belong to the site the sale was logged at?",
   "landing.originTitle": "Where the idea comes from",
   "landing.originBody":
-    "The design is inspired by a real rules engine that processed and audited invoicing for a Colombian health insurer using Databricks: master catalogs, cross-validation, and an explainable audit layer. Here the domain is a fictional retail chain — no Spark, no real data — but the pattern (layers, traceability, static and dynamic rules) is the same.",
+    "The design is inspired by real rule engines used to audit high-volume transactional data in a professional data engineering role: master catalogs as the source of truth, cross-validation against multiple systems, and an explainable audit trail instead of a black-box pass/fail. Here the domain is a fictional retail chain instead — no Spark, no real data — but the validation approach (layers, traceability, self-consistency and cross-reference checks) is the same.",
   "landing.stackTitle": "Stack",
   "landing.ctaTitle": "Ready to see it work?",
   "landing.ctaButton": "Generate data and audit",
@@ -127,9 +136,18 @@ const es: Record<keyof typeof en, string> = {
   "landing.goldTitle": "Gold",
   "landing.goldDesc":
     "15 reglas de negocio contra los catálogos: existencia, vigencias, márgenes, cuadre de totales.",
+  "landing.validationTitle": "Cómo valida una regla",
+  "landing.validationSubtitle":
+    "Cada regla cae en una de dos categorías, según de dónde sale la verdad contra la que compara.",
+  "landing.endogenousTitle": "Endógena — auto-consistencia",
+  "landing.endogenousDesc":
+    "La fila se valida contra sí misma, sin ninguna fuente externa de por medio. Ejemplo: factura_cuadra — el total debe ser igual a cantidad × precio unitario − descuento, con tolerancia de 0.01.",
+  "landing.exogenousTitle": "Exógena — referencia cruzada",
+  "landing.exogenousDesc":
+    "La fila se valida contra otro sistema de verdad: los catálogos maestros. Ejemplo: trabajador_pertenece_a_sede — ¿ese trabajador realmente pertenece a la sede donde se registró la venta?",
   "landing.originTitle": "De dónde viene la idea",
   "landing.originBody":
-    "El diseño está inspirado en un motor de reglas real que procesaba y auditaba facturación de una EPS colombiana con Databricks: catálogos maestros, validación cruzada, y una capa de auditoría explicable. Acá el dominio es una cadena de tiendas ficticia — sin Spark ni datos reales — pero el patrón (capas, trazabilidad, reglas estáticas y dinámicas) es el mismo.",
+    "El diseño está inspirado en motores de reglas reales usados para auditar datos transaccionales de alto volumen en un rol profesional de ingeniería de datos: catálogos maestros como fuente de verdad, validación cruzada contra varios sistemas, y una capa de auditoría explicable en vez de un pasa/no-pasa de caja negra. Acá el dominio es una cadena de tiendas ficticia — sin Spark ni datos reales — pero el enfoque de validación (capas, trazabilidad, chequeos de auto-consistencia y de referencia cruzada) es el mismo.",
   "landing.stackTitle": "Stack",
   "landing.ctaTitle": "¿Listo para verlo funcionar?",
   "landing.ctaButton": "Generar datos y auditar",

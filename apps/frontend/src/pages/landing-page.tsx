@@ -1,8 +1,10 @@
 import {
   ArrowRight,
+  Calculator,
   Database,
   FileSpreadsheet,
   Layers,
+  Network,
   ShieldCheck,
   Sparkles,
 } from "lucide-react"
@@ -75,6 +77,29 @@ export function LandingPage() {
                 </CardHeader>
               </Card>
             ))}
+          </div>
+        </section>
+
+        <section className="flex flex-col gap-6">
+          <div className="text-center">
+            <h2 className="text-2xl font-semibold">{t("landing.validationTitle")}</h2>
+            <p className="text-muted-foreground mt-1">{t("landing.validationSubtitle")}</p>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <Calculator className="text-primary size-6" />
+                <CardTitle>{t("landing.endogenousTitle")}</CardTitle>
+                <CardDescription>{t("landing.endogenousDesc")}</CardDescription>
+              </CardHeader>
+            </Card>
+            <Card>
+              <CardHeader>
+                <Network className="text-primary size-6" />
+                <CardTitle>{t("landing.exogenousTitle")}</CardTitle>
+                <CardDescription>{t("landing.exogenousDesc")}</CardDescription>
+              </CardHeader>
+            </Card>
           </div>
         </section>
 

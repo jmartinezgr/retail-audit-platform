@@ -158,26 +158,40 @@ Genera `domain/rules/engine.py`, orquestado por `domain/pipeline/gold.py`.
 **Reglas estáticas v1** (las dinámicas/configurables por JSONLogic son un
 motor aparte, pendiente — ver `PLANNING.md` §7):
 
-| Regla | Severidad | Qué valida |
-|---|---|---|
-| `sede_existe` | ERROR | `sede_codigo` existe en el catálogo |
-| `sede_activa` | ERROR | la sede no está inactiva/cerrada (N/A si no existe) |
-| `trabajador_existe` | ERROR | `trabajador_codigo` existe |
-| `trabajador_activo` | ERROR | el trabajador no está inactivo (N/A si no existe) |
-| `trabajador_pertenece_a_sede` | ERROR | el trabajador es de esa sede, no otra (N/A si no existe) |
-| `producto_existe` | ERROR | `producto_sku` existe |
-| `codigo_descuento_existe` | ERROR | si se usó un código, que exista (N/A si no se usó) |
-| `codigo_descuento_vigente` | WARNING | la fecha de venta cae en la vigencia del código |
-| `codigo_descuento_aplica_a_sede` | WARNING | el código es global o es de esa sede |
-| `factura_cuadra` | ERROR | `total ≈ cantidad × precio_unitario − descuento` (tolerancia 0.01) |
-| `margen_no_negativo` | WARNING | `precio_unitario ≥ costo` del producto |
-| `fecha_no_futura` | ERROR | la venta no es de una fecha futura |
-| `fecha_posterior_a_apertura` | ERROR | la venta no es anterior a que la sede abriera |
-| `factura_no_duplicada` | ERROR | `numero_factura` no se repite **dentro del mismo excel** (no compara contra auditorías anteriores) |
-| `cantidad_dentro_de_transferencias` | WARNING | chequeo **simplificado**: suma total histórica de transferencias hacia esa sede para ese SKU ≥ cantidad vendida (no es un balance temporal ordenado por fecha — ver "Abierto" en `PLANNING.md`) |
+Cada regla es **endógena** (compara la fila contra sí misma, ninguna fuente
+externa) o **exógena** (compara la fila contra otra fuente de verdad: los
+catálogos maestros). Es la misma distinción que se explica en la landing
+page (`landing.validationTitle`) — acá está aplicada regla por regla.
+
+| Regla | Severidad | Tipo | Qué valida |
+|---|---|---|---|
+| `sede_existe` | ERROR | exógena | `sede_codigo` existe en el catálogo |
+| `sede_activa` | ERROR | exógena | la sede no está inactiva/cerrada (N/A si no existe) |
+| `trabajador_existe` | ERROR | exógena | `trabajador_codigo` existe |
+| `trabajador_activo` | ERROR | exógena | el trabajador no está inactivo (N/A si no existe) |
+| `trabajador_pertenece_a_sede` | ERROR | exógena | el trabajador es de esa sede, no otra (N/A si no existe) |
+| `producto_existe` | ERROR | exógena | `producto_sku` existe |
+| `codigo_descuento_existe` | ERROR | exógena | si se usó un código, que exista (N/A si no se usó) |
+| `codigo_descuento_vigente` | WARNING | exógena | la fecha de venta cae en la vigencia del código |
+| `codigo_descuento_aplica_a_sede` | WARNING | exógena | el código es global o es de esa sede |
+| `factura_cuadra` | ERROR | endógena | `total ≈ cantidad × precio_unitario − descuento` (tolerancia 0.01) |
+| `margen_no_negativo` | WARNING | exógena | `precio_unitario ≥ costo` del producto |
+| `fecha_no_futura` | ERROR | endógena | la venta no es de una fecha futura |
+| `fecha_posterior_a_apertura` | ERROR | exógena | la venta no es anterior a que la sede abriera |
+| `factura_no_duplicada` | ERROR | endógena | `numero_factura` no se repite **dentro del mismo excel** (no compara contra auditorías anteriores) |
+| `cantidad_dentro_de_transferencias` | WARNING | exógena | chequeo **simplificado**: suma total histórica de transferencias hacia esa sede para ese SKU ≥ cantidad vendida (no es un balance temporal ordenado por fecha — ver "Abierto" en `PLANNING.md`) |
 
 Una regla "N/A" (el prerequisito no existe, ej. el trabajador no existe)
 pasa de forma vacía — no se penaliza dos veces el mismo problema de raíz.
+
+**Nota sobre `factura_cuadra`**: en este dominio cada fila es una venta
+completa (una factura = un renglón, ver `factura_no_duplicada`), así que
+la reconciliación de totales pasa a nivel de fila (`total` contra
+`cantidad × precio_unitario − descuento`), no como suma de varios
+renglones de una misma factura — el dominio no modela facturas
+multi-ítem. Es la misma idea que "el total de la factura debe cuadrar
+con la suma de sus ítems" en un sistema transaccional real, adaptada a
+un esquema de una sola fila por venta.
 
 **Re-ejecución independiente**: `gold` se puede regenerar sin volver a
 subir el excel ni rehacer bronze/silver — lee el `silver` ya guardado en
