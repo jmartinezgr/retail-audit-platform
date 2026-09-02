@@ -11,7 +11,7 @@ from src.domain.pipeline.silver import to_silver
 from src.domain.uploads import UploadStatus
 from src.infrastructure.db.catalog.snapshot import load_catalog_snapshot
 from src.infrastructure.db.uploads.repository import UploadRepository
-from src.infrastructure.storage import lake
+from src.infrastructure.storage import duckdb_query, lake
 from src.infrastructure.storage.minio_client import get_object_bytes
 
 
@@ -90,3 +90,28 @@ class AuditService:
             "columns": df.columns,
             "preview": df.head(limit).to_dicts(),
         }
+
+    def query_gold(
+        self,
+        upload_id: str,
+        limit: int,
+        offset: int,
+        severidad: str | None,
+        regla: str | None,
+        sede_codigo: str | None,
+        paso: bool | None,
+    ) -> dict:
+        rows, total = duckdb_query.query_gold(
+            _gold_key(upload_id),
+            limit=limit,
+            offset=offset,
+            severidad=severidad,
+            regla=regla,
+            sede_codigo=sede_codigo,
+            paso=paso,
+        )
+        return {"upload_id": upload_id, "total": total, "limit": limit, "offset": offset, "rows": rows}
+
+    def get_gold_summary(self, upload_id: str) -> dict:
+        counts = duckdb_query.summary_gold(_gold_key(upload_id))
+        return {"upload_id": upload_id, "counts": counts}
