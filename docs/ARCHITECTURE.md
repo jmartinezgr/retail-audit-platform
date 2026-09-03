@@ -123,9 +123,13 @@ Implementaciones concretas, sin lógica de negocio.
   justo lo que permite re-ejecutar `gold` después de cambiar algo en un
   catálogo sin tocar bronze/silver. También la usa `api/demo/` para que
   el generador construya filas con datos reales.
-- `storage/duckdb_query.py` — `query_gold()` (filtros + paginación real) y
-  `summary_gold()` (conteo por regla/severidad/paso), SQL directo contra
-  la tabla Delta de gold vía `delta_scan()`. Conexión nueva por llamada
+- `storage/duckdb_query.py` — `query_gold()` (filtros + paginación real,
+  incluye `numero_factura` como filtro exacto más), `summary_gold()`
+  (conteo por regla/severidad/paso) y `get_rows_by_factura()` (todas las
+  filas de una tabla Delta cualquiera — silver o gold — para una
+  `numero_factura` exacta, usado por la página de detalle de factura), SQL
+  directo contra la tabla Delta vía `delta_scan()`. Conexión nueva por
+  llamada
   (~160ms de overhead: instalar/cargar la extensión `delta` + crear el
   secret — se midió, y para esta escala no vale la pena cachear la
   conexión con la complejidad de thread-safety que traería). Probado
@@ -194,9 +198,20 @@ Ya existe:
   (`LayerPreviewResponse`, genérico para cualquier capa) — un preview
   fijo (primeras filas), no pensado para la tabla del frontend.
   `GET /audits/{upload_id}/gold/query` (filtros `severidad`/`regla`/
-  `sede_codigo`/`paso` + `limit`/`offset`, vía `duckdb_query.query_gold`)
-  y `GET /audits/{upload_id}/gold/summary` (conteo por regla/severidad/
-  paso, vía `duckdb_query.summary_gold`) sí son para eso.
+  `sede_codigo`/`paso`/`numero_factura` + `limit`/`offset`, vía
+  `duckdb_query.query_gold`) y `GET /audits/{upload_id}/gold/summary`
+  (conteo por regla/severidad/paso, vía `duckdb_query.summary_gold`) sí
+  son para eso. `GET /audits/{upload_id}/factura/{numero_factura}`
+  (`AuditService.get_venta_detail`) junta todo lo relacionado a una
+  factura puntual: la venta tal como quedó en silver (tipada) + cada
+  regla evaluada contra ella en gold — para la página de detalle de
+  factura del frontend, no requiere paginar porque una factura tiene a
+  lo sumo 15 evaluaciones. Si gold todavía no existe para el upload,
+  devuelve `evaluaciones: []` y `gold_ready: false` en vez de fallar
+  (silver, en cambio, si no existe deja que la excepción de
+  `delta_scan` se propague — mismo criterio que el resto de `api/audits/`:
+  "la capa no existe" es un 500, consistente con `/bronze`, `/silver`,
+  `/gold`).
 - `api/demo/` — `POST /demo/generate-excel` (`filas`, `error_rate`) llama
   a `load_catalog_snapshot()` + `generar_ventas()`, sube el resultado a
   `demo/{uuid}/ventas_generadas.xlsx` en el bucket (`put_object_bytes`,
@@ -260,8 +275,9 @@ src/
   components/ui/         # shadcn/ui (generados, no se editan a mano salvo necesidad real)
   components/app/        # componentes propios (layout, status-badge, gold-table, column-check,
                           #   theme-toggle, language-toggle)
-  pages/                  # una por ruta (landing-page, home-page, job-detail-page)
-  App.tsx                 # rutas (react-router) - "/" landing, "/app" home, "/jobs/:id" detalle
+  pages/                  # una por ruta (landing-page, home-page, job-detail-page, invoice-detail-page)
+  App.tsx                 # rutas (react-router) - "/" landing, "/app" home, "/jobs/:id" detalle,
+                          #   "/jobs/:id/fac/:facturaId" detalle de factura
   main.tsx                # QueryClientProvider + BrowserRouter + Toaster
 ```
 
@@ -285,6 +301,23 @@ fase de deploy).
 hace el trabajo pesado), así que una tabla headless no aportaba nada ahí
 — se armó con los primitivos de `components/ui/table`. Queda instalada
 para cuando una pantalla necesite ordenar/filtrar en memoria de verdad.
+
+**Filtro por factura + página de detalle**: `gold-table.tsx` suma un
+input de texto (`numero_factura`, match exacto, mismo query param que ya
+usan `severidad`/`regla`/`paso`) y una columna de acción con un ícono
+"ver" (`lucide-react` `Eye`) que linkea a
+`/jobs/{uploadId}/fac/{numero_factura}`. `pages/invoice-detail-page.tsx`
+junta ahí la venta (silver, tipada) y las 15 reglas evaluadas (gold) vía
+`GET /audits/{id}/factura/{numero_factura}` — un solo request, sin
+paginar porque el techo es 15 filas. Si el mismo `numero_factura`
+aparece más de una vez en el excel (la propia violación que detecta
+`factura_no_duplicada`), la página lo muestra con una alerta en vez de
+fallar — se probó específicamente contra una factura duplicada real del
+seed generado, no solo el camino feliz. Al listar evaluaciones hay que
+usar `${regla}-${índice}` como key de React, no solo `regla`: con
+factura duplicada hay dos filas por regla y una key no única rompía el
+render (encontrado con Playwright, consola mostraba "two children with
+the same key").
 
 **Landing vs. app**: `/` es marketing (`landing-page.tsx`, sin `AppLayout`
 — tiene su propio header mínimo), `/app` y `/jobs/:id` sí usan
@@ -393,3 +426,18 @@ React y no puede llamar a `useI18n()`.
   e "i18n propio". Toda la UI estática (landing, home, detalle de job)
   traducida. Verificado con `tsc -b`, `oxlint`, `npm run build`, y en
   navegador real con Playwright (claro/oscuro × en/es).
+- **2026-09-02**: landing page — reescrito el párrafo de origen para no
+  nombrar el dominio/industria real (portafolio, ver `PLANNING.md`), y
+  agregada la sección "cómo valida una regla" (endógena/exógena).
+  `DATA_MODEL.md` clasifica las 15 reglas con esa misma taxonomía.
+- **2026-09-02**: filtro por `numero_factura` en `GET
+  /audits/{id}/gold/query` + nuevo `GET
+  /audits/{id}/factura/{numero_factura}` (`duckdb_query.get_rows_by_factura`,
+  `AuditService.get_venta_detail`) — ver detalle arriba en "Filtro por
+  factura + página de detalle". Frontend: input de factura + columna de
+  acción "ver" en `gold-table.tsx`, página nueva
+  `pages/invoice-detail-page.tsx` en `/jobs/:id/fac/:facturaId`. Bug real
+  encontrado probando contra una factura duplicada de verdad: la key de
+  React en la lista de evaluaciones era solo `regla`, colisionaba cuando
+  la misma factura (y por lo tanto la misma regla) aparecía dos veces —
+  corregido a `${regla}-${índice}`.

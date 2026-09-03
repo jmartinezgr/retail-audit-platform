@@ -1,8 +1,11 @@
 import { useQuery } from "@tanstack/react-query"
-import { useState } from "react"
+import { Eye } from "lucide-react"
+import { type FormEvent, useState } from "react"
+import { Link } from "react-router-dom"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import {
   Select,
   SelectContent,
@@ -29,6 +32,8 @@ export function GoldTable({ uploadId }: { uploadId: string }) {
   const [severidad, setSeveridad] = useState<string>(ALL)
   const [regla, setRegla] = useState<string>(ALL)
   const [paso, setPaso] = useState<string>(ALL)
+  const [numeroFacturaInput, setNumeroFacturaInput] = useState("")
+  const [numeroFactura, setNumeroFactura] = useState("")
   const [page, setPage] = useState(0)
 
   const summaryQuery = useQuery({
@@ -38,7 +43,7 @@ export function GoldTable({ uploadId }: { uploadId: string }) {
   })
 
   const goldQuery = useQuery({
-    queryKey: ["gold-query", uploadId, severidad, regla, paso, page],
+    queryKey: ["gold-query", uploadId, severidad, regla, paso, numeroFactura, page],
     queryFn: () =>
       api.audits.queryGold(uploadId, {
         limit: PAGE_SIZE,
@@ -46,9 +51,16 @@ export function GoldTable({ uploadId }: { uploadId: string }) {
         severidad: severidad === ALL ? undefined : severidad,
         regla: regla === ALL ? undefined : regla,
         paso: paso === ALL ? undefined : paso === "true",
+        numeroFactura: numeroFactura || undefined,
       }),
     retry: false,
   })
+
+  function handleFacturaFilterSubmit(e: FormEvent) {
+    e.preventDefault()
+    setNumeroFactura(numeroFacturaInput.trim())
+    setPage(0)
+  }
 
   if (summaryQuery.isError) {
     return <p className="text-muted-foreground text-sm">{t("job.layerNotReady", { layer: "gold" })}</p>
@@ -86,6 +98,18 @@ export function GoldTable({ uploadId }: { uploadId: string }) {
       )}
 
       <div className="flex flex-wrap gap-2">
+        <form onSubmit={handleFacturaFilterSubmit} className="flex gap-1">
+          <Input
+            value={numeroFacturaInput}
+            onChange={(e) => setNumeroFacturaInput(e.target.value)}
+            placeholder={t("gold.filterInvoicePlaceholder")}
+            className="w-40"
+          />
+          <Button type="submit" variant="outline" size="sm">
+            {t("gold.filterInvoiceApply")}
+          </Button>
+        </form>
+
         <Select value={severidad} onValueChange={resetPageAnd(setSeveridad)}>
           <SelectTrigger className="w-40">
             <SelectValue placeholder={t("gold.filterSeverityAll")} />
@@ -134,12 +158,13 @@ export function GoldTable({ uploadId }: { uploadId: string }) {
               <TableHead>{t("gold.colSeverity")}</TableHead>
               <TableHead>{t("gold.colResult")}</TableHead>
               <TableHead>{t("gold.colMessage")}</TableHead>
+              <TableHead className="w-10" />
             </TableRow>
           </TableHeader>
           <TableBody>
             {goldQuery.isLoading && (
               <TableRow>
-                <TableCell colSpan={7} className="text-muted-foreground text-center">
+                <TableCell colSpan={8} className="text-muted-foreground text-center">
                   {t("gold.loading")}
                 </TableCell>
               </TableRow>
@@ -166,6 +191,16 @@ export function GoldTable({ uploadId }: { uploadId: string }) {
                 </TableCell>
                 <TableCell className="text-muted-foreground max-w-xs truncate">
                   {row.mensaje}
+                </TableCell>
+                <TableCell>
+                  <Button variant="ghost" size="icon" className="size-7" asChild>
+                    <Link
+                      to={`/jobs/${uploadId}/fac/${encodeURIComponent(row.numero_factura)}`}
+                      title={t("gold.viewInvoice")}
+                    >
+                      <Eye className="size-4" />
+                    </Link>
+                  </Button>
                 </TableCell>
               </TableRow>
             ))}

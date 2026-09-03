@@ -32,3 +32,14 @@ class GoldSummaryResponse(BaseModel):
 
     upload_id: str
     counts: list[dict]
+
+
+class VentaDetailResponse(BaseModel):
+    """Todo lo relacionado a una factura puntual: la venta en silver +
+    cada regla evaluada contra ella en gold"""
+
+    upload_id: str
+    numero_factura: str
+    ventas: list[dict]
+    evaluaciones: list[dict]
+    gold_ready: bool

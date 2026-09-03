@@ -68,6 +68,14 @@ export interface GoldSummaryResponse {
   counts: GoldSummaryRow[]
 }
 
+export interface VentaDetailResponse {
+  upload_id: string
+  numero_factura: string
+  ventas: Record<string, unknown>[]
+  evaluaciones: GoldRow[]
+  gold_ready: boolean
+}
+
 export interface ColumnValidationResponse {
   upload_id: string
   columnas_encontradas: string[]

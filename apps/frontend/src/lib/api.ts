@@ -9,6 +9,7 @@ import type {
   RunAuditResponse,
   UploadListResponse,
   UploadStatusResponse,
+  VentaDetailResponse,
 } from "@/types/api"
 import { getSessionId } from "@/lib/session"
 
@@ -91,6 +92,7 @@ export const api = {
         regla?: string
         sedeCodigo?: string
         paso?: boolean
+        numeroFactura?: string
       },
     ) => {
       const qs = new URLSearchParams()
@@ -100,10 +102,16 @@ export const api = {
       if (params.regla) qs.set("regla", params.regla)
       if (params.sedeCodigo) qs.set("sede_codigo", params.sedeCodigo)
       if (params.paso !== undefined) qs.set("paso", String(params.paso))
+      if (params.numeroFactura) qs.set("numero_factura", params.numeroFactura)
       return request<GoldPageResponse>(
         `/audits/${uploadId}/gold/query?${qs.toString()}`,
       )
     },
+
+    facturaDetail: (uploadId: string, numeroFactura: string) =>
+      request<VentaDetailResponse>(
+        `/audits/${uploadId}/factura/${encodeURIComponent(numeroFactura)}`,
+      ),
   },
 
   demo: {

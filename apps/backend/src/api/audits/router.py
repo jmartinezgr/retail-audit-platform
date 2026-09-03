@@ -10,6 +10,7 @@ from src.api.audits.schemas import (
     GoldSummaryResponse,
     LayerPreviewResponse,
     RunAuditResponse,
+    VentaDetailResponse,
 )
 from src.api.audits.service import AuditService
 from src.infrastructure.db.session import SessionLocal
@@ -81,13 +82,16 @@ def query_gold(
     regla: str | None = None,
     sede_codigo: str | None = None,
     paso: bool | None = None,
+    numero_factura: str | None = None,
     db: Session = Depends(get_db),
 ):
     """Página filtrada de gold, vía DuckDB directo sobre la tabla Delta -
     para la tabla de resultados del frontend (puede haber decenas de
     miles de filas, esto no es el preview fijo de /gold)"""
     service = AuditService(db)
-    return service.query_gold(upload_id, limit, offset, severidad, regla, sede_codigo, paso)
+    return service.query_gold(
+        upload_id, limit, offset, severidad, regla, sede_codigo, paso, numero_factura
+    )
 
 
 @router.get("/{upload_id}/gold/summary", response_model=GoldSummaryResponse)
@@ -96,3 +100,12 @@ def gold_summary(upload_id: str, db: Session = Depends(get_db)):
     resumen rápido sin traer las filas"""
     service = AuditService(db)
     return service.get_gold_summary(upload_id)
+
+
+@router.get("/{upload_id}/factura/{numero_factura}", response_model=VentaDetailResponse)
+def get_factura_detail(upload_id: str, numero_factura: str, db: Session = Depends(get_db)):
+    """Todo lo relacionado a una factura puntual: la venta (silver) +
+    cada regla evaluada contra ella (gold) - para la página de detalle
+    de factura del frontend"""
+    service = AuditService(db)
+    return service.get_venta_detail(upload_id, numero_factura)

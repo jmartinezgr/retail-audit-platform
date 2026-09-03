@@ -39,7 +39,7 @@ def _delta_uri(object_key: str) -> str:
     return f"s3://{settings.MINIO_BUCKET}/{object_key}"
 
 
-_FILTER_COLUMNS = ("severidad", "regla", "sede_codigo", "paso")
+_FILTER_COLUMNS = ("severidad", "regla", "sede_codigo", "paso", "numero_factura")
 
 
 def query_gold(
@@ -50,6 +50,7 @@ def query_gold(
     regla: str | None = None,
     sede_codigo: str | None = None,
     paso: bool | None = None,
+    numero_factura: str | None = None,
 ) -> tuple[list[dict], int]:
     """Filtra + pagina la tabla gold. Devuelve (filas, total_sin_paginar)."""
     filtros = {
@@ -57,6 +58,7 @@ def query_gold(
         "regla": regla,
         "sede_codigo": sede_codigo,
         "paso": paso,
+        "numero_factura": numero_factura,
     }
     clauses = [f"{col} = ?" for col in _FILTER_COLUMNS if filtros[col] is not None]
     params = [filtros[col] for col in _FILTER_COLUMNS if filtros[col] is not None]
@@ -83,6 +85,21 @@ def query_gold(
     )
 
     return rows, total
+
+
+def get_rows_by_factura(object_key: str, numero_factura: str) -> list[dict]:
+    """Todas las filas de una tabla Delta (silver o gold) para una
+    numero_factura exacta - usado por la página de detalle de factura."""
+    con = _connection()
+    uri = _delta_uri(object_key)
+    return (
+        con.execute(
+            f"SELECT * FROM delta_scan('{uri}') WHERE numero_factura = ?",
+            [numero_factura],
+        )
+        .pl()
+        .to_dicts()
+    )
 
 
 def summary_gold(object_key: str) -> list[dict]:

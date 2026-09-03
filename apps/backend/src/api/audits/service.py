@@ -100,6 +100,7 @@ class AuditService:
         regla: str | None,
         sede_codigo: str | None,
         paso: bool | None,
+        numero_factura: str | None = None,
     ) -> dict:
         rows, total = duckdb_query.query_gold(
             _gold_key(upload_id),
@@ -109,9 +110,32 @@ class AuditService:
             regla=regla,
             sede_codigo=sede_codigo,
             paso=paso,
+            numero_factura=numero_factura,
         )
         return {"upload_id": upload_id, "total": total, "limit": limit, "offset": offset, "rows": rows}
 
     def get_gold_summary(self, upload_id: str) -> dict:
         counts = duckdb_query.summary_gold(_gold_key(upload_id))
         return {"upload_id": upload_id, "counts": counts}
+
+    def get_venta_detail(self, upload_id: str, numero_factura: str) -> dict:
+        """Todo lo que se sabe de una factura puntual: la venta tal como
+        quedó en silver (tipada) + cada regla evaluada contra ella en
+        gold. Usado por la página de detalle de factura del frontend."""
+        ventas = duckdb_query.get_rows_by_factura(_silver_key(upload_id), numero_factura)
+
+        evaluaciones: list[dict] = []
+        gold_ready = True
+        try:
+            evaluaciones = duckdb_query.get_rows_by_factura(_gold_key(upload_id), numero_factura)
+        except Exception:
+            gold_ready = False
+        evaluaciones.sort(key=lambda r: r["regla"])
+
+        return {
+            "upload_id": upload_id,
+            "numero_factura": numero_factura,
+            "ventas": ventas,
+            "evaluaciones": evaluaciones,
+            "gold_ready": gold_ready,
+        }
