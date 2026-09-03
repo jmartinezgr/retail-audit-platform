@@ -165,3 +165,43 @@ export interface GenerateExcelResponse {
   facturas_con_error: number
   errores_por_tipo: Record<string, number>
 }
+
+export type TipoReglaDinamica = "UMBRAL" | "VENTANA_EXCLUSION"
+export type AmbitoRegla = "CABECERA" | "ITEM"
+export type Operador = ">" | ">=" | "<" | "<=" | "==" | "!="
+
+/** Una regla dinámica configurable desde el frontend (ver
+ * /app/rules) - los campos específicos de un tipo quedan null en el
+ * otro. UMBRAL usa campo/operador/valor(/filtro_categoria/filtro_sede),
+ * VENTANA_EXCLUSION usa sede_codigo/fecha_inicio/fecha_fin. */
+export interface RuleDefinition {
+  id: number
+  nombre: string
+  tipo: TipoReglaDinamica
+  ambito: AmbitoRegla
+  severidad: "ERROR" | "WARNING"
+  activa: boolean
+  mensaje: string
+  campo: string | null
+  operador: Operador | null
+  valor: number | null
+  filtro_categoria: string | null
+  filtro_sede: string | null
+  sede_codigo: string | null
+  fecha_inicio: string | null
+  fecha_fin: string | null
+}
+
+export type RuleDefinitionInput = Omit<RuleDefinition, "id" | "activa">
+
+export interface FieldOption {
+  campo: string
+  label: string
+}
+
+export interface AvailableFieldsResponse {
+  cabecera: FieldOption[]
+  item: FieldOption[]
+  categorias: string[]
+  sedes: string[]
+}

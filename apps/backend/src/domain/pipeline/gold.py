@@ -9,10 +9,14 @@ from datetime import date
 import polars as pl
 
 from src.domain.rules.engine import evaluar
-from src.domain.rules.types import CatalogosSnapshot
+from src.domain.rules.types import CatalogosSnapshot, ReglaDinamica
 
 
 def to_gold(
-    facturas: pl.DataFrame, items: pl.DataFrame, catalogos: CatalogosSnapshot, hoy: date | None = None
+    facturas: pl.DataFrame,
+    items: pl.DataFrame,
+    catalogos: CatalogosSnapshot,
+    reglas_dinamicas: list[ReglaDinamica] | None = None,
+    hoy: date | None = None,
 ) -> pl.DataFrame:
-    return evaluar(facturas, items, catalogos, hoy)
+    return evaluar(facturas, items, catalogos, reglas_dinamicas=reglas_dinamicas, hoy=hoy)

@@ -1,4 +1,5 @@
 import type {
+  AvailableFieldsResponse,
   ColumnValidationResponse,
   DashboardResponse,
   DualLayerPreviewResponse,
@@ -11,6 +12,8 @@ import type {
   GoldSummaryResponse,
   LayerPreviewResponse,
   RequestUploadUrlResponse,
+  RuleDefinition,
+  RuleDefinitionInput,
   RunAuditResponse,
   UploadListResponse,
   UploadStatusResponse,
@@ -140,6 +143,27 @@ export const api = {
         method: "POST",
         body: JSON.stringify(payload),
       }),
+  },
+
+  rules: {
+    list: () => request<RuleDefinition[]>("/rules/"),
+
+    fields: () => request<AvailableFieldsResponse>("/rules/fields"),
+
+    create: (payload: RuleDefinitionInput) =>
+      request<RuleDefinition>("/rules/", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+
+    update: (id: number, payload: Partial<RuleDefinitionInput & { activa: boolean }>) =>
+      request<RuleDefinition>(`/rules/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      }),
+
+    remove: (id: number) =>
+      request<{ deleted: boolean }>(`/rules/${id}`, { method: "DELETE" }),
   },
 }
 

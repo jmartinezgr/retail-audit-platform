@@ -4,8 +4,9 @@ contra los catálogos maestros. Guarda TODAS las evaluaciones (pase o
 falle): una fila por (factura, item_id, regla), donde item_id es null
 para reglas de CABECERA (una evaluación por factura) y tiene valor para
 reglas de ÍTEM (una evaluación por ítem). Las reglas dinámicas/
-configurables (JSONLogic) son un motor aparte, pendiente - ver
-docs/PLANNING.md §4 y §7.
+configurables (domain/rules/dynamic.py, un DSL tabular propio, no
+JSONLogic - ver docs/PLANNING.md §4/§7) son un motor aparte que
+`evaluar()` combina con estas 18 en la misma tabla plana.
 
 Ver docs/DATA_MODEL.md para el catálogo completo de reglas, su
 severidad, si son de cabecera o de ítem, y el esquema de salida de gold.
@@ -15,9 +16,23 @@ from datetime import date
 
 import polars as pl
 
-from src.domain.rules.types import CatalogosSnapshot, Severidad
+from src.domain.rules.dynamic import evaluar_dinamicas
+from src.domain.rules.types import CatalogosSnapshot, ReglaDinamica, Severidad, construir_resultado
 
 TOLERANCIA_TOTAL = 0.01
+
+# Nombres de las 18 reglas estáticas (ver docs/DATA_MODEL.md § Gold) - una
+# regla dinámica nueva no puede reusar uno de estos nombres, se valida en
+# api/rules/schemas.py.
+NOMBRES_REGLAS_ESTATICAS = {
+    "sede_existe", "sede_activa", "trabajador_existe", "trabajador_activo",
+    "trabajador_pertenece_a_sede", "comprador_existe", "fecha_no_futura",
+    "fecha_posterior_a_apertura", "factura_total_cuadra",
+    "producto_existe", "codigo_descuento_existe", "codigo_descuento_vigente",
+    "codigo_descuento_aplica_a_sede", "codigo_descuento_aplica_a_categoria",
+    "item_cuadra", "margen_no_negativo", "cantidad_dentro_de_transferencias",
+    "item_duplicado_en_factura",
+}
 
 
 def _enrich_facturas(facturas: pl.DataFrame, catalogos: CatalogosSnapshot) -> pl.DataFrame:
@@ -94,47 +109,26 @@ def _enrich_items(items: pl.DataFrame, facturas_enriquecidas: pl.DataFrame, cata
     return df
 
 
-def _resultado(
-    df: pl.DataFrame,
-    regla: str,
-    severidad: Severidad,
-    paso: pl.Expr,
-    mensaje_falla: str,
-    mensaje_pasa: str = "OK",
-    item_id: pl.Expr | None = None,
-) -> pl.DataFrame:
-    return df.select(
-        pl.col("numero_factura"),
-        (item_id if item_id is not None else pl.lit(None, dtype=pl.Int64)).alias("item_id"),
-        pl.col("sede_codigo"),
-        pl.col("fecha"),
-        pl.lit(regla).alias("regla"),
-        pl.lit(severidad.value).alias("severidad"),
-        paso.alias("paso"),
-        pl.when(paso).then(pl.lit(mensaje_pasa)).otherwise(pl.lit(mensaje_falla)).alias("mensaje"),
-    )
-
-
 def _evaluar_cabecera(df: pl.DataFrame, hoy: date) -> list[pl.DataFrame]:
     resultados: list[pl.DataFrame] = []
 
     sede_existe = pl.col("_sede_activa").is_not_null()
-    resultados.append(_resultado(df, "sede_existe", Severidad.ERROR, sede_existe, "la sede no existe en el catálogo"))
+    resultados.append(construir_resultado(df, "sede_existe", Severidad.ERROR, sede_existe, "la sede no existe en el catálogo"))
 
     sede_activa = ~sede_existe | pl.col("_sede_activa")
-    resultados.append(_resultado(df, "sede_activa", Severidad.ERROR, sede_activa, "la sede está inactiva/cerrada"))
+    resultados.append(construir_resultado(df, "sede_activa", Severidad.ERROR, sede_activa, "la sede está inactiva/cerrada"))
 
     trabajador_existe = pl.col("_trabajador_activo").is_not_null()
     resultados.append(
-        _resultado(df, "trabajador_existe", Severidad.ERROR, trabajador_existe, "el trabajador no existe en el catálogo")
+        construir_resultado(df, "trabajador_existe", Severidad.ERROR, trabajador_existe, "el trabajador no existe en el catálogo")
     )
 
     trabajador_activo = ~trabajador_existe | pl.col("_trabajador_activo")
-    resultados.append(_resultado(df, "trabajador_activo", Severidad.ERROR, trabajador_activo, "el trabajador está inactivo"))
+    resultados.append(construir_resultado(df, "trabajador_activo", Severidad.ERROR, trabajador_activo, "el trabajador está inactivo"))
 
     trabajador_pertenece_a_sede = ~trabajador_existe | (pl.col("_trabajador_sede_codigo") == pl.col("sede_codigo"))
     resultados.append(
-        _resultado(
+        construir_resultado(
             df, "trabajador_pertenece_a_sede", Severidad.ERROR, trabajador_pertenece_a_sede,
             "el trabajador pertenece a otra sede",
         )
@@ -143,14 +137,14 @@ def _evaluar_cabecera(df: pl.DataFrame, hoy: date) -> list[pl.DataFrame]:
     tiene_comprador = pl.col("comprador_codigo").is_not_null() & (pl.col("comprador_codigo").str.strip_chars() != "")
     comprador_existe = ~tiene_comprador | pl.col("_comprador_existe")
     resultados.append(
-        _resultado(
+        construir_resultado(
             df, "comprador_existe", Severidad.WARNING, comprador_existe,
             "el comprador no existe en el catálogo", "OK (sin comprador registrado)",
         )
     )
 
     fecha_no_futura = pl.col("fecha").is_null() | (pl.col("fecha") <= pl.lit(hoy))
-    resultados.append(_resultado(df, "fecha_no_futura", Severidad.ERROR, fecha_no_futura, "la fecha de venta es futura"))
+    resultados.append(construir_resultado(df, "fecha_no_futura", Severidad.ERROR, fecha_no_futura, "la fecha de venta es futura"))
 
     fecha_posterior_a_apertura = (
         pl.col("fecha").is_null()
@@ -158,7 +152,7 @@ def _evaluar_cabecera(df: pl.DataFrame, hoy: date) -> list[pl.DataFrame]:
         | (pl.col("fecha") >= pl.col("_sede_fecha_apertura"))
     )
     resultados.append(
-        _resultado(
+        construir_resultado(
             df, "fecha_posterior_a_apertura", Severidad.ERROR, fecha_posterior_a_apertura,
             "la venta es anterior a que la sede abriera",
         )
@@ -172,7 +166,7 @@ def _evaluar_cabecera(df: pl.DataFrame, hoy: date) -> list[pl.DataFrame]:
         | ((pl.col("total_factura") - total_esperado).abs() <= TOLERANCIA_TOTAL)
     )
     resultados.append(
-        _resultado(
+        construir_resultado(
             df, "factura_total_cuadra", Severidad.ERROR, factura_total_cuadra,
             "el total registrado no cuadra con la suma de los ítems + IVA",
         )
@@ -187,7 +181,7 @@ def _evaluar_items(df: pl.DataFrame, hoy: date) -> list[pl.DataFrame]:
 
     producto_existe = pl.col("_producto_costo").is_not_null()
     resultados.append(
-        _resultado(df, "producto_existe", Severidad.ERROR, producto_existe, "el producto no existe en el catálogo", item_id=item_id)
+        construir_resultado(df, "producto_existe", Severidad.ERROR, producto_existe, "el producto no existe en el catálogo", item_id=item_id)
     )
 
     # "" cuenta como "sin descuento" igual que null (documentado en
@@ -198,7 +192,7 @@ def _evaluar_items(df: pl.DataFrame, hoy: date) -> list[pl.DataFrame]:
 
     descuento_existe = ~tiene_descuento | pl.col("_descuento_tipo").is_not_null()
     resultados.append(
-        _resultado(
+        construir_resultado(
             df, "codigo_descuento_existe", Severidad.ERROR, descuento_existe,
             "el código de descuento no existe en el catálogo", sin_descuento_msg, item_id=item_id,
         )
@@ -211,7 +205,7 @@ def _evaluar_items(df: pl.DataFrame, hoy: date) -> list[pl.DataFrame]:
         | ((pl.col("fecha") >= pl.col("_descuento_vigencia_inicio")) & (pl.col("fecha") <= pl.col("_descuento_vigencia_fin")))
     )
     resultados.append(
-        _resultado(
+        construir_resultado(
             df, "codigo_descuento_vigente", Severidad.WARNING, descuento_vigente,
             "el código de descuento no está vigente en la fecha de la venta", sin_descuento_msg, item_id=item_id,
         )
@@ -224,7 +218,7 @@ def _evaluar_items(df: pl.DataFrame, hoy: date) -> list[pl.DataFrame]:
         | (pl.col("_descuento_sede_codigo") == pl.col("sede_codigo"))
     )
     resultados.append(
-        _resultado(
+        construir_resultado(
             df, "codigo_descuento_aplica_a_sede", Severidad.WARNING, descuento_aplica_a_sede,
             "el código de descuento es de otra sede", sin_descuento_msg, item_id=item_id,
         )
@@ -238,7 +232,7 @@ def _evaluar_items(df: pl.DataFrame, hoy: date) -> list[pl.DataFrame]:
         | pl.col("_descuento_categorias").list.contains(pl.col("_producto_categoria"))
     )
     resultados.append(
-        _resultado(
+        construir_resultado(
             df, "codigo_descuento_aplica_a_categoria", Severidad.WARNING, descuento_aplica_a_categoria,
             "el código de descuento no aplica a la categoría de este producto", sin_descuento_msg, item_id=item_id,
         )
@@ -259,7 +253,7 @@ def _evaluar_items(df: pl.DataFrame, hoy: date) -> list[pl.DataFrame]:
         | ((pl.col("total_item") - subtotal_esperado).abs() <= TOLERANCIA_TOTAL)
     )
     resultados.append(
-        _resultado(
+        construir_resultado(
             df, "item_cuadra", Severidad.ERROR, item_cuadra,
             "el total del ítem no cuadra con cantidad × precio_unitario − descuento", item_id=item_id,
         )
@@ -271,12 +265,12 @@ def _evaluar_items(df: pl.DataFrame, hoy: date) -> list[pl.DataFrame]:
         | (pl.col("precio_unitario") >= pl.col("_producto_costo"))
     )
     resultados.append(
-        _resultado(df, "margen_no_negativo", Severidad.WARNING, margen_no_negativo, "se vendió por debajo del costo", item_id=item_id)
+        construir_resultado(df, "margen_no_negativo", Severidad.WARNING, margen_no_negativo, "se vendió por debajo del costo", item_id=item_id)
     )
 
     cantidad_dentro_de_transferencias = pl.col("cantidad").is_null() | (pl.col("cantidad") <= pl.col("_cantidad_disponible"))
     resultados.append(
-        _resultado(
+        construir_resultado(
             df, "cantidad_dentro_de_transferencias", Severidad.WARNING, cantidad_dentro_de_transferencias,
             "la cantidad vendida excede lo transferido históricamente a esa sede para ese producto "
             "(chequeo simplificado: suma total histórica, no un balance temporal)", item_id=item_id,
@@ -289,7 +283,7 @@ def _evaluar_items(df: pl.DataFrame, hoy: date) -> list[pl.DataFrame]:
         & pl.col("producto_sku").is_not_null()
     )
     resultados.append(
-        _resultado(
+        construir_resultado(
             df, "item_duplicado_en_factura", Severidad.ERROR, ~duplicado,
             "el producto está repetido en la misma factura (debería ser una sola línea con la cantidad sumada)",
             item_id=item_id,
@@ -299,12 +293,11 @@ def _evaluar_items(df: pl.DataFrame, hoy: date) -> list[pl.DataFrame]:
     return resultados
 
 
-def evaluar(facturas: pl.DataFrame, items: pl.DataFrame, catalogos: CatalogosSnapshot, hoy: date | None = None) -> pl.DataFrame:
-    """Evalúa las reglas estáticas sobre facturas + items. `hoy` es
-    inyectable para que los tests sean deterministas; por defecto usa la
-    fecha real."""
-    hoy = hoy or date.today()
-
+def enriquecer(facturas: pl.DataFrame, items: pl.DataFrame, catalogos: CatalogosSnapshot) -> tuple[pl.DataFrame, pl.DataFrame]:
+    """Une facturas/items contra los catálogos maestros - lo que necesitan
+    tanto las reglas estáticas (_evaluar_cabecera/_evaluar_items) como las
+    dinámicas (dynamic.evaluar_dinamicas), así ninguna de las dos repite
+    los joins."""
     facturas_enr = _enrich_facturas(facturas, catalogos)
 
     suma_items = items.group_by("numero_factura").agg(pl.col("total_item").sum().alias("_suma_items"))
@@ -312,5 +305,24 @@ def evaluar(facturas: pl.DataFrame, items: pl.DataFrame, catalogos: CatalogosSna
 
     items_enr = _enrich_items(items, facturas_enr, catalogos)
 
+    return facturas_enr, items_enr
+
+
+def evaluar(
+    facturas: pl.DataFrame,
+    items: pl.DataFrame,
+    catalogos: CatalogosSnapshot,
+    reglas_dinamicas: list[ReglaDinamica] | None = None,
+    hoy: date | None = None,
+) -> pl.DataFrame:
+    """Evalúa las 18 reglas estáticas, más las reglas dinámicas activas si
+    se pasan, sobre facturas + items. `hoy` es inyectable para que los
+    tests sean deterministas; por defecto usa la fecha real."""
+    hoy = hoy or date.today()
+
+    facturas_enr, items_enr = enriquecer(facturas, items, catalogos)
+
     resultados = _evaluar_cabecera(facturas_enr, hoy) + _evaluar_items(items_enr, hoy)
+    if reglas_dinamicas:
+        resultados += evaluar_dinamicas(facturas_enr, items_enr, reglas_dinamicas)
     return pl.concat(resultados)

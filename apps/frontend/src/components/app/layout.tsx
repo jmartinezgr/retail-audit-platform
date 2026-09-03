@@ -18,6 +18,9 @@ export function AppLayout() {
             {t("layout.tagline")}
           </span>
           <div className="ml-auto flex items-center gap-1">
+            <Link to="/app/rules" className="text-muted-foreground px-2 text-sm hover:underline">
+              {t("layout.rules")}
+            </Link>
             <Link to="/" className="text-muted-foreground px-2 text-sm hover:underline">
               {t("layout.aboutProject")}
             </Link>

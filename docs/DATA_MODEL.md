@@ -263,7 +263,49 @@ subir el excel ni rehacer bronze/silver — lee `silver/facturas` y
 `silver/items` ya guardados en Delta + el estado **actual** de los
 catálogos en Postgres (`POST /audits/{id}/run-gold`, ver
 `ARCHITECTURE.md`). Útil para re-auditar después de corregir algo en un
-catálogo.
+catálogo, o después de crear/editar una regla dinámica (ver abajo) — el
+frontend expone esto como el botón "Re-run gold" en el detalle del job.
+
+### Reglas dinámicas (configurables desde el frontend, `/app/rules`)
+
+Además de las 18 estáticas, `gold` puede incluir reglas dinámicas —
+configurables desde el frontend, guardadas en la tabla Postgres
+`rule_definitions`, sin tocar código ni redeploy. Producen filas con
+exactamente el mismo esquema que las estáticas (comparten el helper
+`construir_resultado()` en `domain/rules/types.py`), así que conviven en
+la misma tabla plana y `dashboard`/`matrix`/`gold/query`/`export` las
+tratan igual que a cualquiera de las 18 sin necesitar código aparte —
+todos esos endpoints ya agregaban por lo que viniera en la columna
+`regla`, no por una lista fija de nombres.
+
+Son un **DSL tabular propio de dos tipos**, no JSONLogic (decisión
+2026-09-03, ver `PLANNING.md` §4/§7): cada tipo se traduce 1:1 a una
+expresión de Polars, consistente con que el resto del motor ya es
+vectorizado.
+
+- **UMBRAL** (`domain/rules/dynamic.py::_evaluar_umbral`): compara un
+  `campo` contra un `valor` con un `operador`
+  (`>`,`>=`,`<`,`<=`,`==`,`!=`). El operador+valor describe la
+  **condición de violación**, no la de paso (ej. "descuento_pct > 0.20"
+  es la regla, no su negación). Ámbito CABECERA o ÍTEM, con filtros
+  opcionales `filtro_categoria` (solo ÍTEM) y `filtro_sede` (ambos).
+  Campos permitidos (whitelist fija, expuesta en `GET /rules/fields`):
+  cabecera `total_factura`, `iva_pct`; ítem `cantidad`,
+  `precio_unitario`, `total_item`, y dos campos **calculados** solo para
+  este evaluador (no tocan `engine.py`): `descuento_pct = 1 −
+  total_item/(cantidad×precio_unitario)` y `margen_pct =
+  (precio_unitario − costo)/precio_unitario`. Si el campo (calculado o
+  no) es `null` para una fila, o un filtro no aplica, la regla pasa para
+  esa fila (N/A) — mismo patrón que las reglas estáticas.
+- **VENTANA_EXCLUSION** (`_evaluar_ventana`): una `sede_codigo` no
+  debería tener ventas entre `fecha_inicio` y `fecha_fin` (ej. "sede en
+  mantenimiento"). Siempre ámbito CABECERA.
+
+El nombre de una regla dinámica no puede reusar uno de los 18 nombres
+estáticos (`domain/rules/engine.py::NOMBRES_REGLAS_ESTATICAS`) ni el de
+otra regla dinámica — validado en `api/rules/service.py`. Una regla
+`activa=false` se guarda pero no se evalúa (filtrado en
+`domain/rules/dynamic.py::evaluar_dinamicas`, no en infraestructura).
 
 **Generador sintético**: `domain/demo/generator.py` (`POST
 /demo/generate-excel`) genera facturas (1-5 ítems cada una) e inyecta

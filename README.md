@@ -18,6 +18,7 @@ The rule that best captures what this project is about: **an invoice's registere
 2. **Run the pipeline** — bronze (raw, untyped, full traceability) → silver (typed, structurally validated, invalid rows kept and flagged, never dropped) → gold (every rule evaluated against every invoice/item, pass or fail, with severity).
 3. **Explore the results**: an executive dashboard (valid vs. failing invoices, registered vs. validated value, which rules fail most), a summary matrix (one row per invoice, one column per rule, worst-case-per-invoice), a detailed row-level table, and a per-invoice detail page showing the header, its line items, and exactly which rule failed where.
 4. **Export** the problematic invoices (and why) to a two-sheet Excel workbook for offline review.
+5. **Add rules without touching code**: create custom validation rules from the UI — a threshold on a field (e.g. "discount over 20% on ROPA items") or a store exclusion window (e.g. "TDA-001 shouldn't have sales in January") — and re-run gold on an existing job to see them take effect, with no re-upload and no redeploy.
 
 ## Rule engine: endogenous vs. exogenous
 
@@ -27,6 +28,8 @@ The 18 rules split along two axes: **scope** (header rules run once per invoice;
 - **Exogenous** — checks that cross-reference master catalogs (stores, employees, products, discount codes, transfers). Example: `codigo_descuento_aplica_a_categoria` — a discount code is only valid for the product categories it's scoped to.
 
 Every rule carries a severity (`ERROR` blocks validity, `WARNING` flags without invalidating — e.g. an unrecognized buyer code, since most counter sales don't record one). The full catalog of all 18 rules — exact name, severity, scope, and what each one checks — lives in [`docs/DATA_MODEL.md`](docs/DATA_MODEL.md) and is also rendered as a live reference section on the app's landing page.
+
+On top of those 18, the `/app/rules` screen lets you define your own — a threshold on a field (with optional category/store filters) or a store exclusion window over a date range — through a form, no code changes. They're stored in Postgres and evaluated alongside the built-in 18 the next time gold runs, producing rows with the exact same shape, so the dashboard, the summary matrix, and the export pick them up automatically.
 
 ## Screenshots
 
@@ -133,7 +136,6 @@ docker-compose.yml     # local Postgres + MinIO
 
 ## Roadmap
 
-- **Dynamic rules** — currently all 18 rules are hardcoded in `domain/rules/engine.py`. Next: a small rule DSL (or JSONLogic) backed by a Postgres table, editable from the frontend without touching code — e.g. adjustable max-discount-per-category thresholds.
 - **Deploy** — free-tier first (Vercel + Render/Fly.io + Neon + Cloudflare R2), with a ~$5/mo VPS fallback if cold starts hurt the demo experience.
 
 Full phase-by-phase history and what's explicitly out of scope (and why) in [`docs/PLANNING.md`](docs/PLANNING.md).

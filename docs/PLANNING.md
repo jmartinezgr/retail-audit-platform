@@ -106,20 +106,32 @@ a propósito, por alcance/tiempo:
   así a propósito para no meterse en esa complejidad en esta primera
   vuelta.
 
-**Dinámicas — pendiente, fase 7** (configurables desde el frontend, sin
-tocar código):
-- Descuento máximo permitido por categoría de producto (umbral editable).
-- Lista de sedes "en mantenimiento" que no deberían tener ventas en un rango
-  de fechas.
+**Dinámicas — hecho (fase 7, 2026-09-03)**: configurables desde
+`/app/rules` sin tocar código ni redeploy, guardadas en la tabla
+Postgres `rule_definitions`. Cubren los dos casos que se habían dejado
+planteados acá:
+- Descuento máximo permitido por categoría de producto → regla tipo
+  UMBRAL, campo `descuento_pct`, `filtro_categoria`.
+- Sedes "en mantenimiento" que no deberían tener ventas en un rango de
+  fechas → regla tipo VENTANA_EXCLUSION.
 
-Para las dinámicas, usar algo tipo **JSONLogic** (`json-logic-py`) o un
-DSL propio muy simple (condición → severidad → mensaje) guardado en Postgres,
-editable desde el frontend. Esto es lo que hace que la demo se sienta
-"configurable" sin meter un lenguaje de reglas complejo. Nota: lo que
-originalmente se pensó como "dinámico" para vigencia/aplicabilidad de
-códigos de descuento terminó siendo estático (`codigo_descuento_vigente`,
-`codigo_descuento_aplica_a_sede`) — son chequeos contra datos del
-catálogo, no umbrales que alguien necesite ajustar desde una UI.
+**Decisión — DSL tabular propio de dos tipos, no JSONLogic
+(2026-09-03)**: se evaluó JSONLogic (`json-logic-py`, más expresivo,
+condiciones anidadas AND/OR) contra un DSL tabular fijo (UMBRAL: campo +
+operador + valor, con filtros opcionales de categoría/sede;
+VENTANA_EXCLUSION: sede + rango de fechas). Se eligió el DSL tabular
+por dos razones: (1) se traduce 1:1 a expresiones de Polars
+(`domain/rules/dynamic.py`), consistente con que el motor estático ya es
+vectorizado — JSONLogic hubiera necesitado su propio evaluador aparte,
+fila por fila o traducido a mano; (2) es mucho más fácil de convertir en
+un formulario simple (selects) que un árbol lógico genérico, y el
+usuario quería poder demostrar "creo una regla desde la UI" en vivo en
+una entrevista — la UI importaba tanto como el motor. Las reglas
+dinámicas producen filas con el mismo esquema de gold que las 18
+estáticas (comparten `construir_resultado()`), así que conviven en la
+misma tabla plana y el dashboard/matriz/export ya las soportan sin
+cambios de código — solo agregaban por lo que viniera en la columna
+`regla`, no por una lista fija de nombres.
 
 ## 5. Arquitectura de capas — estilo lakehouse, sin Spark
 
@@ -442,13 +454,12 @@ Script Python (Faker + numpy) que:
    resumen, detalle de factura, dashboard ejecutivo, export de facturas
    problemáticas a excel (ver §7) — creció bastante más allá del alcance
    original de la fase, incluyendo el rediseño a facturas multi-ítem (§3).
-7. Reglas dinámicas editables (si alcanza el tiempo).
+7. ✅ Reglas dinámicas editables desde el frontend (`/app/rules`, DSL
+   tabular propio, ver §4).
 8. Deploy en capas gratuitas, ajustar si hace falta el VPS de $5.
 
 ## 11. Abierto / por decidir más adelante
 
-- ¿Reglas dinámicas con JSONLogic o un DSL propio más simple? (JSONLogic es
-  la opción segura, ya madura).
 - Confirmar que `deltalake` escribe/lee sin problemas contra Cloudflare R2
   (S3-compatible) antes de comprometerse con esa ruta de deploy — probar
   temprano, no dejarlo para el final.

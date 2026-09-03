@@ -1,11 +1,13 @@
 import {
   ArrowRight,
   Calculator,
+  CalendarX,
   Database,
   FileSpreadsheet,
   Layers,
   Network,
   ShieldCheck,
+  SlidersHorizontal,
   Sparkles,
 } from "lucide-react"
 import { Link } from "react-router-dom"
@@ -156,6 +158,32 @@ export function LandingPage() {
               </div>
             </Card>
           </div>
+        </section>
+
+        <section className="flex flex-col gap-6">
+          <div className="text-center">
+            <h2 className="text-2xl font-semibold">{t("landing.dynamicRulesTitle")}</h2>
+            <p className="text-muted-foreground mt-1">{t("landing.dynamicRulesSubtitle")}</p>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <SlidersHorizontal className="text-primary size-6" />
+                <CardTitle>{t("landing.dynamicThresholdTitle")}</CardTitle>
+                <CardDescription>{t("landing.dynamicThresholdDesc")}</CardDescription>
+              </CardHeader>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CalendarX className="text-primary size-6" />
+                <CardTitle>{t("landing.dynamicWindowTitle")}</CardTitle>
+                <CardDescription>{t("landing.dynamicWindowDesc")}</CardDescription>
+              </CardHeader>
+            </Card>
+          </div>
+          <p className="text-muted-foreground mx-auto max-w-2xl text-center text-sm">
+            {t("landing.dynamicRulesHint")}
+          </p>
         </section>
 
         <section className="flex flex-col gap-4 text-center">

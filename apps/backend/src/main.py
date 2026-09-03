@@ -12,9 +12,11 @@ from src.infrastructure.db.catalog.models import (
     CodigoDescuentoModel,
     TransferenciaModel,
 )
+from src.infrastructure.db.rules.models import RuleDefinitionModel
 from src.api.uploads.router import router as uploads_router
 from src.api.audits.router import router as audits_router
 from src.api.demo.router import router as demo_router
+from src.api.rules.router import router as rules_router
 
 app = FastAPI(title="Retail Audit Platform - Backend")
 
@@ -25,3 +27,4 @@ Base.metadata.create_all(bind=engine)
 app.include_router(uploads_router)
 app.include_router(audits_router)
 app.include_router(demo_router)
+app.include_router(rules_router)

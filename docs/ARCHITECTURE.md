@@ -55,18 +55,40 @@ en memoria, nunca leyendo/escribiendo directo a storage.
 - `rules/types.py` — `Severidad` (enum ERROR/WARNING) y `CatalogosSnapshot`
   (dataclass con los catálogos como `pl.DataFrame`, incluye `compradores`
   — la forma en la que el motor de reglas necesita los datos, sin saber
-  que vienen de Postgres).
+  que vienen de Postgres). También `TipoReglaDinamica`/`AmbitoRegla`/
+  `Operador` (enums) y `ReglaDinamica` (dataclass) - el modelo de dominio
+  de una regla dinámica, y `construir_resultado()` - el helper que arma
+  una fila del esquema de gold (`numero_factura, item_id, sede_codigo,
+  fecha, regla, severidad, paso, mensaje`), compartido entre el motor
+  estático (`engine.py`) y el dinámico (`dynamic.py`) para que ambos
+  produzcan exactamente la misma forma de fila.
 - `rules/engine.py` — el motor de reglas **estáticas**: `_enrich_facturas()`
   hace un left-join de la cabecera contra sedes/trabajadores/compradores,
   `_enrich_items()` une cada ítem con su cabecera (sede/fecha/total) y
-  contra productos/códigos de descuento/transferencias. `evaluar()` corre
+  contra productos/códigos de descuento/transferencias -
+  `enriquecer(facturas, items, catalogos)` expone ambos joins como
+  función pública (antes vivían inline en `evaluar()`), para que
+  `dynamic.py` los reuse sin duplicar lógica. `evaluar()` corre
   `_evaluar_cabecera()` (9 reglas, una evaluación por factura, `item_id =
   null`) + `_evaluar_items()` (9 reglas, una evaluación por ítem) —
-  funciones = expresiones de Polars vectorizadas, no loops fila por fila.
-  Catálogo completo de las 18 reglas, severidad, tipo (endógena/exógena) y
-  ámbito (cabecera/ítem) en `DATA_MODEL.md`. *(pendiente)* el evaluador de
-  reglas **dinámicas** (JSONLogic, configurables desde el frontend) —
-  motor aparte, no compite con este.
+  funciones = expresiones de Polars vectorizadas, no loops fila por fila
+  — y si se le pasan `reglas_dinamicas`, concatena también el resultado
+  de `dynamic.evaluar_dinamicas()`. Catálogo completo de las 18 reglas,
+  severidad, tipo (endógena/exógena) y ámbito (cabecera/ítem) en
+  `DATA_MODEL.md`. También expone `NOMBRES_REGLAS_ESTATICAS` (los 18
+  nombres, para que una regla dinámica no pueda reusarlos).
+- `rules/dynamic.py` — el motor de reglas **dinámicas**: un DSL tabular
+  propio de dos tipos (UMBRAL, VENTANA_EXCLUSION), no JSONLogic (decisión
+  2026-09-03, ver `PLANNING.md` §4/§7 - se traduce 1:1 a expresiones de
+  Polars, consistente con que `engine.py` ya es vectorizado, y es mucho
+  más fácil de convertir en un formulario simple que un árbol lógico
+  genérico). `evaluar_dinamicas(facturas_enr, items_enr, reglas)` filtra
+  las inactivas, calcula los dos campos derivados que solo este
+  evaluador necesita (`descuento_pct`, `margen_pct` sobre `items_enr`,
+  `null` cuando el denominador es 0 - la regla pasa, N/A) y despacha a
+  `_evaluar_umbral()`/`_evaluar_ventana()` según el tipo. Detalle
+  completo (whitelist de campos, semántica de cada tipo) en
+  `DATA_MODEL.md` § Gold § Reglas dinámicas.
 - `pipeline/bronze.py` — `to_bronze(file_bytes: bytes) -> tuple[pl.DataFrame, pl.DataFrame]`:
   recibe los bytes crudos del excel (no una ruta ni un objeto de storage,
   para que sea testeable sin MinIO), lee las 2 hojas con
@@ -148,6 +170,17 @@ Implementaciones concretas, sin lógica de negocio.
   cachear — es justo lo que permite re-ejecutar `gold` después de
   cambiar algo en un catálogo sin tocar bronze/silver. También la usa
   `api/demo/` para que el generador construya facturas con datos reales.
+- `db/rules/` — `models.py` (`RuleDefinitionModel`, tabla
+  `rule_definitions` - una regla dinámica configurable desde el
+  frontend; tabla nueva, se crea sola en el próximo arranque vía
+  `Base.metadata.create_all` en `main.py`, no hizo falta tocar
+  `seed_catalog.py`), `repository.py` (`RuleDefinitionRepository` -
+  primer repositorio de este proyecto con create/update/delete,
+  `CatalogRepository` solo tenía `list_*`) y `snapshot.py`
+  (`load_reglas_dinamicas(db) -> list[ReglaDinamica]`, mismo patrón que
+  `catalog/snapshot.py`: convierte SQLAlchemy → dataclass de dominio, sin
+  cachear, trae TODAS las reglas — el filtrado por `activa` es del
+  dominio, no de infraestructura).
 - `storage/duckdb_query.py` — `query_gold()` (filtros + paginación real,
   incluye `numero_factura` como filtro exacto), `summary_gold()` (conteo
   por regla/severidad/paso), `matrix_gold()` (agrega gold por
@@ -222,11 +255,14 @@ Ya existe:
   - `POST /audits/{upload_id}/run-gold` → `AuditService.run_gold`: lee
     `silver/facturas` y `silver/items` YA GUARDADOS en Delta (no rehace
     bronze/silver) + el estado ACTUAL de los catálogos vía
-    `load_catalog_snapshot()`, y regenera `gold`. Re-ejecutable en
+    `load_catalog_snapshot()` + las reglas dinámicas vía
+    `load_reglas_dinamicas()`, y regenera `gold`. Re-ejecutable en
     cualquier momento sin volver a subir el excel — por ejemplo, después
-    de corregir un código de descuento en el catálogo. Solo acá se marca
-    `UploadStatus.COMPLETED` (antes de que existiera gold, `run_pipeline`
-    dejaba el estado en `PROCESSING` a propósito).
+    de corregir un código de descuento en el catálogo, o de crear/editar
+    una regla dinámica (el botón "Re-run gold" del frontend es justo
+    este endpoint). Solo acá se marca `UploadStatus.COMPLETED` (antes de
+    que existiera gold, `run_pipeline` dejaba el estado en `PROCESSING`
+    a propósito).
 
   Ambos corren con `BackgroundTasks` de FastAPI (no bloquean la
   respuesta; el `db: Session` inyectado por `Depends` sigue vivo durante
@@ -295,9 +331,22 @@ Ya existe:
   `facturas_con_error`, `errores_por_tipo`). El usuario decide si sube
   el archivo por el flujo normal de `api/uploads/` para correrlo por el
   pipeline.
+- `api/rules/` — CRUD de reglas dinámicas (`RuleDefinitionModel` vía
+  `RuleDefinitionRepository`): `GET /rules/` (lista), `POST /rules/`
+  (crear), `PATCH /rules/{id}` (edición parcial, incluye el toggle
+  `activa`), `DELETE /rules/{id}`, y `GET /rules/fields` (whitelist de
+  campos evaluables por ámbito + categorías/sedes reales del catálogo -
+  para poblar los selects del formulario del frontend sin hardcodear
+  ninguna de las dos cosas ahí). La validación de "forma" de una regla
+  (UMBRAL vs VENTANA_EXCLUSION, whitelist de campos, nombre no
+  reservado/duplicado) vive en `api/rules/service.py` (necesita
+  consultar la DB), no en `schemas.py` — un `RuleValidationError` se
+  traduce a 422 en el router. Primera API de este proyecto con
+  create/update/delete real (las demás son de solo lectura o
+  procesamiento).
 
 Pendiente: `api/catalog/` (CRUD de sedes/trabajadores/productos/etc., solo
-si la fase de reglas dinámicas editables lo necesita).
+si hace falta editarlos desde el frontend más adelante).
 
 ## Convención de imports
 
@@ -345,16 +394,16 @@ src/
   data/rules-catalog.ts   # catálogo estático de las 18 reglas para la landing (no depende del backend)
   lib/api.ts            # cliente HTTP tipado (fetch), un objeto `api.*` por router del backend
   lib/session.ts          # UUID anónimo en localStorage - lib/api.ts lo manda como X-Client-Id
-  lib/pipeline.ts        # runFullPipeline() - corre bronze→silver→gold esperando cada capa de verdad
+  lib/pipeline.ts        # runFullPipeline()/runGoldOnly() - corren bronze→silver→gold (o solo gold) esperando cada capa de verdad
   lib/theme.tsx           # ThemeProvider/useTheme - toggle .dark, persiste en localStorage
   lib/i18n.tsx             # I18nProvider/useI18n - t(key, vars) con interpolación {placeholder}
-  i18n/translations.ts    # diccionarios en/es, ~80 claves (layout, landing, home, job, gold, columnCheck)
+  i18n/translations.ts    # diccionarios en/es, ~120 claves (layout, landing, home, job, gold, columnCheck, dashboard, rules)
   components/ui/         # shadcn/ui (generados, no se editan a mano salvo necesidad real)
   components/app/        # componentes propios (layout, status-badge, gold-table, gold-matrix,
                           #   dashboard, column-check, theme-toggle, language-toggle)
-  pages/                  # una por ruta (landing-page, home-page, job-detail-page, invoice-detail-page)
-  App.tsx                 # rutas (react-router) - "/" landing, "/app" home, "/jobs/:id" detalle,
-                          #   "/jobs/:id/fac/:facturaId" detalle de factura
+  pages/                  # una por ruta (landing-page, home-page, job-detail-page, invoice-detail-page, rules-page)
+  App.tsx                 # rutas (react-router) - "/" landing, "/app" home, "/app/rules" reglas dinámicas,
+                          #   "/jobs/:id" detalle, "/jobs/:id/fac/:facturaId" detalle de factura
   main.tsx                # QueryClientProvider + BrowserRouter + Toaster
 ```
 
@@ -409,10 +458,30 @@ key no única rompía el render (bug real encontrado con Playwright,
 consola mostraba "two children with the same key", corregido en la
 ronda anterior — el mismo cuidado aplica ahora a la lista de ítems).
 
+**Página de reglas dinámicas**: `pages/rules-page.tsx` (`/app/rules`, link
+"Rules"/"Reglas" en `AppLayout`) - lista las reglas existentes (`GET
+/rules/`) con activar/desactivar (`Power`, `PATCH /rules/{id}`) y borrar
+(`Trash2`, confirmación con `window.confirm`, no se agregó un componente
+`Dialog` nuevo solo para esto) + un formulario para crear una regla
+nueva, con campos condicionales según el tipo elegido (UMBRAL muestra
+ámbito/campo/operador/valor/filtros; VENTANA_EXCLUSION muestra
+sede/fecha inicio/fecha fin) - el `Select` de "Campo" y las opciones de
+sede/categoría se pueblan desde `GET /rules/fields`, no están
+hardcodeadas en el frontend. Es una pantalla global, no scoped a un job
+- las reglas creadas ahí aplican a cualquier job la próxima vez que se
+corra o re-corra gold. `job-detail-page.tsx` gana un botón secundario
+"Re-run gold" (junto a "Process", habilitado solo cuando ya existe
+silver) que llama `runGoldOnly()` (`lib/pipeline.ts`, reusa el mismo
+`waitForLayer` que `runFullPipeline` pero sin el paso de silver) - es lo
+que hace demostrable "creo/edito una regla dinámica y re-audito un job
+ya existente sin resubir el excel", sin tocar `gold-matrix.tsx`,
+`dashboard.tsx` ni `gold-table.tsx` (los tres ya pivotean por lo que
+venga en la columna `regla`, no por una lista fija).
+
 **Landing vs. app**: `/` es marketing (`landing-page.tsx`, sin `AppLayout`
-— tiene su propio header mínimo), `/app` y `/jobs/:id` sí usan
-`AppLayout` (el logo dentro de la app apunta a `/app`, no a `/`; hay un
-link "Sobre el proyecto" de vuelta a `/`).
+— tiene su propio header mínimo), `/app`, `/app/rules` y `/jobs/:id` sí
+usan `AppLayout` (el logo dentro de la app apunta a `/app`, no a `/`;
+hay un link "Sobre el proyecto" de vuelta a `/`).
 
 **Tema**: los tokens de color en `index.css` (`--primary`, `--ring`,
 `--accent`, `--sidebar-*`, `--chart-*`) están recoloreados a violeta
@@ -606,3 +675,30 @@ React y no puede llamar a `useI18n()`.
   afectadas no por filas), y el botón de exportar — reusa
   `downloadBlobToDisk` (`lib/pipeline.ts`) para el mismo flujo de
   descarga que ya usaba la generación de datos sintéticos.
+- **2026-09-03**: reglas dinámicas (fase 7 de `PLANNING.md`, completa) —
+  un DSL tabular propio de dos tipos (UMBRAL, VENTANA_EXCLUSION), no
+  JSONLogic, configurable desde `/app/rules` sin tocar código.
+  `domain/rules/types.py` gana `ReglaDinamica`/`TipoReglaDinamica`/
+  `AmbitoRegla`/`Operador` y `construir_resultado()` (movido desde
+  `engine.py`, ahora compartido). `domain/rules/engine.py` expone
+  `enriquecer()` (antes inline en `evaluar()`) para que
+  `domain/rules/dynamic.py` (nuevo) reuse los mismos joins sin
+  duplicarlos, y `evaluar()`/`pipeline/gold.to_gold()` ganan un parámetro
+  `reglas_dinamicas` opcional. Nuevo `infrastructure/db/rules/` (modelo
+  `RuleDefinitionModel`, tabla `rule_definitions` — se crea sola en el
+  próximo arranque, sin tocar `seed_catalog.py`; `RuleDefinitionRepository`,
+  primer repo de este proyecto con create/update/delete; `snapshot.py`)
+  y `api/rules/` (CRUD completo + `GET /rules/fields`). `AuditService.run_gold`
+  ahora carga las reglas dinámicas activas y las pasa a `to_gold`.
+  Frontend: `pages/rules-page.tsx` (nueva pantalla global, no scoped a un
+  job), link "Rules" en `AppLayout`, botón "Re-run gold" en
+  `job-detail-page.tsx` (`lib/pipeline.runGoldOnly()`, nuevo) — probado
+  en vivo con Playwright: crear una regla, click en "Re-run gold" sobre
+  un job ya completado, y verla aparecer sin resubir el excel en la
+  matriz Gold (columna nueva, sin cambios en `gold-matrix.tsx`), el
+  dashboard (ranking, sin cambios en `dashboard.tsx`), el detalle de
+  factura (mezclada con las estáticas, mismo tratamiento visual) y el
+  export de problemáticas — los cuatro ya agregaban por lo que viniera
+  en la columna `regla` de gold, no por una lista fija de 18 nombres,
+  así que no necesitaron cambios de código para soportar reglas nuevas.
+  Suite de tests: 97 (antes 87), nuevo `tests/domain/rules/test_dynamic.py`.

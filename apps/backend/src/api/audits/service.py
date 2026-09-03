@@ -15,6 +15,7 @@ from src.domain.pipeline.gold import to_gold
 from src.domain.pipeline.silver import to_silver_facturas, to_silver_items
 from src.domain.uploads import UploadStatus
 from src.infrastructure.db.catalog.snapshot import load_catalog_snapshot
+from src.infrastructure.db.rules.snapshot import load_reglas_dinamicas
 from src.infrastructure.db.uploads.repository import UploadRepository
 from src.infrastructure.storage import duckdb_query, lake
 from src.infrastructure.storage.minio_client import (
@@ -110,7 +111,8 @@ class AuditService:
             silver_facturas = lake.read_delta(_silver_facturas_key(upload_id))
             silver_items = lake.read_delta(_silver_items_key(upload_id))
             catalogos = load_catalog_snapshot(self.db)
-            gold_df = to_gold(silver_facturas, silver_items, catalogos)
+            reglas_dinamicas = load_reglas_dinamicas(self.db)
+            gold_df = to_gold(silver_facturas, silver_items, catalogos, reglas_dinamicas=reglas_dinamicas)
             lake.write_delta(gold_df, _gold_key(upload_id))
             self.uploads.update_status(upload_id, UploadStatus.COMPLETED)
         except Exception:

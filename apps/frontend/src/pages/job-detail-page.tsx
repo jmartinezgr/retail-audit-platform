@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { ArrowLeft, Loader2, Play } from "lucide-react"
+import { ArrowLeft, Loader2, Play, RefreshCw } from "lucide-react"
 import { useState } from "react"
 import { Link, useParams } from "react-router-dom"
 import { toast } from "sonner"
@@ -20,7 +20,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useI18n } from "@/lib/i18n"
 import { api } from "@/lib/api"
-import { runFullPipeline, type PipelineStatus } from "@/lib/pipeline"
+import { runFullPipeline, runGoldOnly, type PipelineStatus } from "@/lib/pipeline"
 import type { SheetPreview } from "@/types/api"
 
 function SheetTable({ sheet }: { sheet: SheetPreview }) {
@@ -104,6 +104,7 @@ export function JobDetailPage() {
   const { t } = useI18n()
   const [processing, setProcessing] = useState(false)
   const [processMsg, setProcessMsg] = useState<string | null>(null)
+  const [reRunningGold, setReRunningGold] = useState(false)
 
   const statusQuery = useQuery({
     queryKey: ["upload-status", uploadId],
@@ -129,6 +130,21 @@ export function JobDetailPage() {
     }
   }
 
+  function formatGoldOnlyStatus(status: PipelineStatus): string {
+    if (status.type === "running") return t("job.goldOnlyRunning")
+    if (status.type === "complete") return t("job.toastGoldComplete")
+    return formatPipelineStatus(status)
+  }
+
+  async function invalidateGoldQueries() {
+    await queryClient.invalidateQueries({ queryKey: ["upload-status", uploadId] })
+    await queryClient.invalidateQueries({ queryKey: ["layer", uploadId] })
+    await queryClient.invalidateQueries({ queryKey: ["gold-summary", uploadId] })
+    await queryClient.invalidateQueries({ queryKey: ["gold-query", uploadId] })
+    await queryClient.invalidateQueries({ queryKey: ["gold-matrix", uploadId] })
+    await queryClient.invalidateQueries({ queryKey: ["dashboard", uploadId] })
+  }
+
   async function handleProcess() {
     if (!uploadId) return
     setProcessing(true)
@@ -138,16 +154,26 @@ export function JobDetailPage() {
       )
       if (ok) toast.success(t("job.toastPipelineComplete"))
       else toast.error(t("job.toastPipelineTimeout"))
-      await queryClient.invalidateQueries({ queryKey: ["upload-status", uploadId] })
-      await queryClient.invalidateQueries({ queryKey: ["layer", uploadId] })
-      await queryClient.invalidateQueries({ queryKey: ["gold-summary", uploadId] })
-      await queryClient.invalidateQueries({ queryKey: ["gold-query", uploadId] })
-      await queryClient.invalidateQueries({ queryKey: ["gold-matrix", uploadId] })
-      await queryClient.invalidateQueries({ queryKey: ["dashboard", uploadId] })
+      await invalidateGoldQueries()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : t("job.toastPipelineError"))
     } finally {
       setProcessing(false)
+    }
+  }
+
+  async function handleReRunGold() {
+    if (!uploadId) return
+    setReRunningGold(true)
+    try {
+      const ok = await runGoldOnly(uploadId, (status) => setProcessMsg(formatGoldOnlyStatus(status)))
+      if (ok) toast.success(t("job.toastGoldComplete"))
+      else toast.error(t("job.toastPipelineTimeout"))
+      await invalidateGoldQueries()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : t("job.toastPipelineError"))
+    } finally {
+      setReRunningGold(false)
     }
   }
 
@@ -166,7 +192,18 @@ export function JobDetailPage() {
         </div>
         <div className="flex items-center gap-3">
           {statusQuery.data && <StatusBadge status={statusQuery.data.status} />}
-          <Button onClick={handleProcess} disabled={processing}>
+          {statusQuery.data && !["REQUESTED", "UPLOADED"].includes(statusQuery.data.status) && (
+            <Button
+              onClick={handleReRunGold}
+              disabled={processing || reRunningGold}
+              variant="outline"
+              title={t("job.reRunGoldHint")}
+            >
+              {reRunningGold ? <Loader2 className="animate-spin" /> : <RefreshCw />}
+              {t("job.reRunGold")}
+            </Button>
+          )}
+          <Button onClick={handleProcess} disabled={processing || reRunningGold}>
             {processing ? <Loader2 className="animate-spin" /> : <Play />}
             {t("job.process")}
           </Button>

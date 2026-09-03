@@ -57,6 +57,24 @@ export async function runFullPipeline(
   return goldReady
 }
 
+/**
+ * Re-corre solo gold (silver ya existe) - lee el estado ACTUAL de los
+ * catálogos + reglas dinámicas, sin volver a subir el excel ni rehacer
+ * bronze/silver. Esto es lo que hace demostrable "edito una regla
+ * dinámica y re-audito un job existente sin resubir nada".
+ */
+export async function runGoldOnly(
+  uploadId: string,
+  onStatus: (status: PipelineStatus) => void,
+): Promise<boolean> {
+  onStatus({ type: "running" })
+  await api.audits.runGold(uploadId)
+
+  const goldReady = await waitForLayer(uploadId, "gold", onStatus)
+  onStatus({ type: goldReady ? "complete" : "timeoutGold" })
+  return goldReady
+}
+
 export function downloadBlobToDisk(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob)
   const a = document.createElement("a")
