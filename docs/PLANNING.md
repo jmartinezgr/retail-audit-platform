@@ -55,26 +55,52 @@ Catálogos maestros (capa de referencia, se siembran una vez — *seed data*):
 - **Trabajadores**: id, nombre, sede_id, cargo, fecha_ingreso, activo
 - **Productos**: sku, nombre, categoría, precio_lista, costo
 - **Códigos de descuento**: código, tipo (%, valor fijo), vigencia_inicio,
-  vigencia_fin, sede_aplicable (o global), uso_máximo
+  vigencia_fin, sede_aplicable (o global), categorías_aplicables (o
+  general), uso_máximo
 - **Transferencias** entre sedes: id, producto_sku, sede_origen, sede_destino,
   cantidad, fecha
+- **Compradores**: código, nombre — catálogo simple, opcional en la
+  factura (ver decisión abajo)
 
-Lo que se sube y se audita (el "excel de ventas"):
+Lo que se sube y se audita (excel de 2 hojas, **facturas multi-ítem** —
+decisión 2026-09-03, ver detalle abajo):
 
-- Ventas / facturas: número_factura, fecha, sede_id, trabajador_id,
-  producto_sku, cantidad, precio_unitario, código_descuento (opcional),
-  total, método_pago
+- **Cabecera** (`facturas`): número_factura, fecha, sede_id, trabajador_id,
+  comprador_id (opcional), método_pago, iva_pct, total_factura.
+- **Ítems** (`items`): número_factura (FK a la cabecera), producto_sku,
+  cantidad, precio_unitario, código_descuento (opcional), total_item.
+
+**Decisión — facturas multi-ítem, no una fila = una venta (2026-09-03)**:
+el modelo original tenía una fila de excel = una venta completa (un solo
+producto). Se rediseñó a cabecera + ítems para acercar el demo a un caso
+real de retail (una factura con varios productos) y para poder validar
+algo que antes el dominio no podía expresar: que el total registrado de
+la factura cuadre contra la suma de sus ítems (más IVA) — la misma
+reconciliación de totales que se hace en auditoría real de facturación,
+ahora con dos niveles (`item_cuadra` por ítem, `factura_total_cuadra` a
+nivel de cabecera). Es un cambio que rompe el formato de excel anterior
+a propósito — no hay compatibilidad hacia atrás, es un proyecto de
+portafolio sin usuarios en producción.
+
+**Decisión — comprador es WARNING, no ERROR (2026-09-03)**: en retail
+real, muchas ventas de mostrador no tienen comprador identificado — no
+registrar uno no es un error de auditoría. Si se registra un código que
+no existe en el catálogo, eso sí es una señal real (dato mal cargado o
+comprador no dado de alta), pero sigue siendo WARNING y no ERROR porque
+no bloquea la validez de la venta en sí, a diferencia de por ejemplo una
+sede o trabajador inexistente.
 
 ## 4. Reglas del motor
 
-**Estáticas — implementadas (2026-09-01)**: 15 reglas en
-`domain/rules/engine.py`. Catálogo completo (nombre exacto, severidad, y
-qué valida cada una) en `docs/DATA_MODEL.md` § Gold — no se duplica acá
-para no desincronizarse. Dos limitaciones conocidas, a propósito, por
-alcance/tiempo:
-- `factura_no_duplicada` solo compara **dentro del mismo excel**, no
-  contra auditorías anteriores (haría falta una tabla de facturas
-  históricas cross-job).
+**Estáticas — implementadas (2026-09-01, rediseñadas a cabecera/ítem
+2026-09-03)**: 18 reglas en `domain/rules/engine.py` (9 de cabecera + 9
+de ítem). Catálogo completo (nombre exacto, severidad, tipo
+endógena/exógena, y qué valida cada una) en `docs/DATA_MODEL.md` § Gold
+— no se duplica acá para no desincronizarse. Dos limitaciones conocidas,
+a propósito, por alcance/tiempo:
+- `item_duplicado_en_factura` (antes `factura_no_duplicada`) solo
+  compara **dentro de la misma factura**, no contra auditorías
+  anteriores (haría falta una tabla de facturas históricas cross-job).
 - `cantidad_dentro_de_transferencias` es un chequeo simplificado (suma
   total histórica, no un balance temporal ordenado por fecha) — se decidió
   así a propósito para no meterse en esa complejidad en esta primera
@@ -214,12 +240,14 @@ códigos reales del catálogo — no es el generador sintético de la fase 5
 a mano. `scripts/inspect_delta.py <object_key>` para leer cualquier tabla
 Delta desde la terminal sin pasar por la API.
 
-**Pipeline silver — hecho** (2026-09-01): `domain/ventas.py` (esquema de
-`Venta`: `MetodoPago` + columnas requeridas/opcionales — documentado en
-detalle en `docs/DATA_MODEL.md`) + `domain/pipeline/silver.py`
-(`to_silver()`, pura — tipa cada columna, marca filas inválidas en
-`_errores`/`_es_valida` sin descartarlas; si faltan columnas obligatorias
-por completo lanza `SilverSchemaError` en vez de intentarlo fila por fila).
+**Pipeline silver — hecho** (2026-09-01; rediseñado a cabecera/ítem
+2026-09-03, ver esa entrada más abajo): `domain/ventas.py` (esquema de
+`Factura`/`ItemFactura`: `MetodoPago` + columnas requeridas/opcionales —
+documentado en detalle en `docs/DATA_MODEL.md`) + `domain/pipeline/silver.py`
+(`to_silver_facturas()`/`to_silver_items()`, puras — tipan cada columna,
+marcan filas inválidas en `_errores`/`_es_valida` sin descartarlas; si
+faltan columnas obligatorias por completo lanzan `SilverSchemaError` en
+vez de intentarlo fila por fila).
 Encadenado en `AuditService.run_pipeline` (bronze → silver); nuevo
 `GET /audits/{id}/silver`. Probado con datos rotos a propósito (factura
 vacía, fecha inválida, cantidad negativa/no entera, método de pago
@@ -228,8 +256,9 @@ marcada, no descartada. Esas pruebas ahora son código real en
 `apps/backend/tests/` (`pytest`, 18 tests) — correr con
 `python -m pytest -v` desde `apps/backend`, ver `ARCHITECTURE.md` § Tests.
 
-**Pipeline gold — hecho** (2026-09-01): `domain/rules/{types,engine}.py`
-(15 reglas estáticas, catálogo completo en `docs/DATA_MODEL.md`) +
+**Pipeline gold — hecho** (2026-09-01; motor rediseñado a 18 reglas
+cabecera/ítem 2026-09-03): `domain/rules/{types,engine}.py` (catálogo
+completo en `docs/DATA_MODEL.md`) +
 `domain/pipeline/gold.py` (delgado, solo orquesta) +
 `infrastructure/db/catalog/snapshot.py` (catálogos de Postgres → Polars).
 `AuditService.run_gold` separado de `run_pipeline` a propósito — lee el
@@ -241,17 +270,19 @@ detectó una inconsistencia real en el excel de prueba (un empleado
 puesto a mano en la sede equivocada) — se corrigió el fixture, no la
 regla, buena señal de que el motor funciona.
 
-**Generador sintético — hecho** (2026-09-01): `domain/demo/generator.py`
-(`generar_ventas()`, pura salvo el uso de `random`/`date.today()` con
-`seed` opcional para tests deterministas) construye filas contra los
-catálogos reales sembrados, e inyecta con probabilidad `error_rate`
-**una** violación por fila desde un pool de 21 mutadores — uno por cada
-regla de silver/gold, con el mismo nombre exacto (`sede_existe`,
-`factura_cuadra`, etc.) para poder comparar "lo inyectado" contra "lo que
-gold detectó" después de subir el archivo. Soporta hasta 50,000 filas por
-llamada (`filas` en el request, tope validado en el schema) — el hot path
-por fila no llama a Polars (todo precomputado una vez en `_Prepared`
-dentro del generador), 20,000 filas se generan en ~0.6s. `POST /demo/generate-excel`
+**Generador sintético — hecho** (2026-09-01; reescrito para facturas
+multi-ítem 2026-09-03): `domain/demo/generator.py` (`generar_ventas()`,
+pura salvo el uso de `random`/`date.today()` con `seed`/`hoy` opcionales
+para tests deterministas) construye facturas (1-5 ítems cada una, con
+productos elegidos sin reemplazo por factura) contra los catálogos
+reales sembrados, e inyecta con probabilidad `error_rate` **una**
+violación por factura desde un pool de 26 mutadores (14 de cabecera + 12
+de ítem) — uno por cada regla de silver/gold, con el mismo nombre exacto
+(`sede_existe`, `item_cuadra`, etc.) para poder comparar "lo inyectado"
+contra "lo que gold detectó" después de subir el archivo. Soporta hasta
+50,000 facturas por llamada (`facturas` en el request, tope validado en
+el schema) — el hot path por factura no llama a Polars (todo
+precomputado una vez en `_Prepared` dentro del generador). `POST /demo/generate-excel`
 (`api/demo/`) sube el excel a `demo/` en el bucket (no crea un registro de
 upload — eso lo decide el usuario subiéndolo por el flujo normal) y
 devuelve una URL de descarga prefirmada + el detalle de qué se inyectó.
@@ -316,11 +347,13 @@ tabla necesite ordenar en memoria de verdad.
 
 **Pantallas — hecho** (2026-09-02):
 1. **Landing** (`pages/landing-page.tsx`, ruta `/`): explica el proyecto —
-   qué es, de dónde viene la idea (motor real de auditoría de facturación
-   con Databricks, reimaginado sin Spark ni datos reales), el patrón de
-   capas, el stack. CTA a `/app`.
+   qué es, de dónde viene la idea (motores de reglas reales de auditoría
+   de datos transaccionales de alto volumen, reimaginados sin Spark ni
+   datos reales — copy genérico a propósito, ver decisión de portafolio
+   más abajo), el patrón de capas, cómo valida una regla
+   (endógena/exógena), el stack. CTA a `/app`.
 2. **Home** (`pages/home-page.tsx`, ruta `/app`): generar excel sintético
-   (filas + error_rate) o subir uno propio — ambos caen al mismo flujo
+   (facturas + error_rate) o subir uno propio — ambos caen al mismo flujo
    `request-upload-url → PUT → confirm`. Lista de uploads recientes con
    polling (`refetchInterval`), **scoped a la sesión anónima** (ver abajo).
 3. **Detalle del job** (`pages/job-detail-page.tsx`, ruta `/jobs/:id`):
@@ -416,7 +449,7 @@ Script Python (Faker + numpy) que:
 - Confirmar que `deltalake` escribe/lee sin problemas contra Cloudflare R2
   (S3-compatible) antes de comprometerse con esa ruta de deploy — probar
   temprano, no dejarlo para el final.
-- `factura_no_duplicada` y `cantidad_dentro_de_transferencias` tienen
+- `item_duplicado_en_factura` y `cantidad_dentro_de_transferencias` tienen
   alcance limitado a propósito (ver §4) — revisar si vale la pena
   profundizarlas antes del deploy final, o dejarlas así y ser explícito
   sobre la limitación en la demo/README.

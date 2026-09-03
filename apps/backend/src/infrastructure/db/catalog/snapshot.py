@@ -30,7 +30,12 @@ def load_catalog_snapshot(db: Session) -> CatalogosSnapshot:
     )
     productos = pl.DataFrame(
         [
-            {"sku": p.sku, "costo": p.costo, "precio_lista": p.precio_lista}
+            {
+                "sku": p.sku,
+                "costo": p.costo,
+                "precio_lista": p.precio_lista,
+                "categoria": p.categoria,
+            }
             for p in repo.list_productos()
         ]
     )
@@ -43,9 +48,11 @@ def load_catalog_snapshot(db: Session) -> CatalogosSnapshot:
                 "vigencia_inicio": c.vigencia_inicio,
                 "vigencia_fin": c.vigencia_fin,
                 "sede_codigo": c.sede_codigo,
+                "categorias_aplicables": c.categorias_aplicables,
             }
             for c in repo.list_codigos_descuento()
-        ]
+        ],
+        schema_overrides={"categorias_aplicables": pl.List(pl.Utf8)},
     )
     transferencias = pl.DataFrame(
         [
@@ -57,6 +64,10 @@ def load_catalog_snapshot(db: Session) -> CatalogosSnapshot:
             for t in repo.list_transferencias()
         ]
     )
+    compradores = pl.DataFrame(
+        [{"codigo": c.codigo} for c in repo.list_compradores()],
+        schema={"codigo": pl.Utf8},
+    )
 
     return CatalogosSnapshot(
         sedes=sedes,
@@ -64,4 +75,5 @@ def load_catalog_snapshot(db: Session) -> CatalogosSnapshot:
         productos=productos,
         codigos_descuento=codigos_descuento,
         transferencias=transferencias,
+        compradores=compradores,
     )

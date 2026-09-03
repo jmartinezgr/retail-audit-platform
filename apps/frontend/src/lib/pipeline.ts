@@ -24,7 +24,8 @@ async function waitForLayer(
   const start = Date.now()
   while (Date.now() - start < timeoutMs) {
     try {
-      await api.audits.layerPreview(uploadId, layer)
+      if (layer === "gold") await api.audits.goldPreview(uploadId)
+      else await api.audits.dualLayerPreview(uploadId, layer)
       return true
     } catch {
       const elapsed = Math.round((Date.now() - start) / 1000)

@@ -1,6 +1,7 @@
 from datetime import date
 
-from sqlalchemy import ForeignKey
+from sqlalchemy import ForeignKey, String
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.infrastructure.db.base import Base
@@ -47,8 +48,10 @@ class ProductoModel(Base):
 
 
 class CodigoDescuentoModel(Base):
-    """Código de descuento, vigente en un rango de fechas y opcionalmente
-    restringido a una sede (sede_codigo nulo = aplica a todas)"""
+    """Código de descuento, vigente en un rango de fechas, opcionalmente
+    restringido a una sede (sede_codigo nulo = aplica a todas) y
+    opcionalmente restringido a un conjunto de categorías de producto
+    (categorias_aplicables nulo/vacío = aplica a todas)"""
 
     __tablename__ = "codigos_descuento"
 
@@ -59,8 +62,19 @@ class CodigoDescuentoModel(Base):
     vigencia_fin: Mapped[date]
     sede_codigo: Mapped[str | None] = mapped_column(ForeignKey("sedes.codigo"))
     uso_maximo: Mapped[int | None]
+    categorias_aplicables: Mapped[list[str] | None] = mapped_column(ARRAY(String))
 
     sede: Mapped["SedeModel | None"] = relationship()
+
+
+class CompradorModel(Base):
+    """Cliente registrado, opcional - no toda venta trae un comprador
+    identificado (ventas de mostrador anónimas son normales en retail)"""
+
+    __tablename__ = "compradores"
+
+    codigo: Mapped[str] = mapped_column(primary_key=True)
+    nombre: Mapped[str]
 
 
 class TransferenciaModel(Base):

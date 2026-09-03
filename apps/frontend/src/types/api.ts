@@ -31,6 +31,22 @@ export interface RunAuditResponse {
   status: string
 }
 
+export interface SheetPreview {
+  row_count: number
+  columns: string[]
+  preview: Record<string, unknown>[]
+}
+
+/** bronze/silver - 2 hojas (facturas + items), no una tabla plana */
+export interface DualLayerPreviewResponse {
+  upload_id: string
+  sheets: {
+    facturas: SheetPreview
+    items: SheetPreview
+  }
+}
+
+/** gold - una sola tabla plana (preview fijo, primeras filas) */
 export interface LayerPreviewResponse {
   upload_id: string
   row_count: number
@@ -40,6 +56,7 @@ export interface LayerPreviewResponse {
 
 export interface GoldRow {
   numero_factura: string
+  item_id: number | null
   sede_codigo: string
   fecha: string
   regla: string
@@ -68,16 +85,36 @@ export interface GoldSummaryResponse {
   counts: GoldSummaryRow[]
 }
 
-export interface VentaDetailResponse {
+export interface GoldMatrixRow {
+  numero_factura: string
+  regla: string
+  severidad: "ERROR" | "WARNING"
+  paso: boolean | null
+  sede_codigo: string
+  fecha: string
+}
+
+/** Página de la matriz factura x regla (peor caso) - filas largas, el
+ * frontend las pivotea a una tabla ancha */
+export interface GoldMatrixResponse {
+  upload_id: string
+  total: number
+  limit: number
+  offset: number
+  rows: GoldMatrixRow[]
+}
+
+export interface FacturaDetailResponse {
   upload_id: string
   numero_factura: string
-  ventas: Record<string, unknown>[]
-  evaluaciones: GoldRow[]
+  facturas: Record<string, unknown>[]
+  items: Record<string, unknown>[]
+  evaluaciones_cabecera: GoldRow[]
+  evaluaciones_items: GoldRow[]
   gold_ready: boolean
 }
 
-export interface ColumnValidationResponse {
-  upload_id: string
+export interface SheetValidationResponse {
   columnas_encontradas: string[]
   columnas_faltantes: string[]
   columnas_opcionales_presentes: string[]
@@ -85,14 +122,22 @@ export interface ColumnValidationResponse {
   valido: boolean
 }
 
+export interface ColumnValidationResponse {
+  upload_id: string
+  facturas: SheetValidationResponse
+  items: SheetValidationResponse
+  valido: boolean
+}
+
 export interface GenerateExcelRequest {
-  filas: number
+  facturas: number
   error_rate: number
 }
 
 export interface GenerateExcelResponse {
   download_url: string
-  filas_totales: number
-  filas_con_error: number
+  facturas_totales: number
+  items_totales: number
+  facturas_con_error: number
   errores_por_tipo: Record<string, number>
 }

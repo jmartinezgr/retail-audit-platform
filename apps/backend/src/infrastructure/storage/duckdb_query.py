@@ -87,6 +87,47 @@ def query_gold(
     return rows, total
 
 
+def matrix_gold(object_key: str, limit: int = 25, offset: int = 0) -> tuple[list[dict], int]:
+    """Agrega gold por (numero_factura, regla) con 'peor caso'
+    (bool_and(paso) - si CUALQUIER item_id de esa factura falló esa
+    regla, sale false) y pagina por FACTURA (no por fila agregada), para
+    que el frontend pueda pivotear una página completa a una matriz
+    ancha (factura x regla) de un vistazo. Devuelve (filas_largas,
+    total_facturas)."""
+    con = _connection()
+    uri = _delta_uri(object_key)
+
+    total = con.execute(f"SELECT count(DISTINCT numero_factura) FROM delta_scan('{uri}')").fetchone()[0]
+
+    rows = (
+        con.execute(
+            f"""
+            WITH agg AS (
+                SELECT
+                    numero_factura,
+                    regla,
+                    any_value(severidad) AS severidad,
+                    bool_and(paso) AS paso,
+                    any_value(sede_codigo) AS sede_codigo,
+                    any_value(fecha) AS fecha
+                FROM delta_scan('{uri}')
+                GROUP BY numero_factura, regla
+            ),
+            pagina AS (
+                SELECT DISTINCT numero_factura FROM agg ORDER BY numero_factura LIMIT ? OFFSET ?
+            )
+            SELECT agg.* FROM agg JOIN pagina USING (numero_factura)
+            ORDER BY numero_factura, regla
+            """,
+            [limit, offset],
+        )
+        .pl()
+        .to_dicts()
+    )
+
+    return rows, total
+
+
 def get_rows_by_factura(object_key: str, numero_factura: str) -> list[dict]:
     """Todas las filas de una tabla Delta (silver o gold) para una
     numero_factura exacta - usado por la página de detalle de factura."""

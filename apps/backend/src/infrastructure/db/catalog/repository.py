@@ -10,6 +10,7 @@ from src.infrastructure.db.catalog.models import (
     ProductoModel,
     CodigoDescuentoModel,
     TransferenciaModel,
+    CompradorModel,
 )
 
 
@@ -31,3 +32,6 @@ class CatalogRepository:
 
     def list_transferencias(self) -> list[TransferenciaModel]:
         return self.db.query(TransferenciaModel).all()
+
+    def list_compradores(self) -> list[CompradorModel]:
+        return self.db.query(CompradorModel).all()

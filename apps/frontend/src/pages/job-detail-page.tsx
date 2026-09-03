@@ -20,6 +20,40 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useI18n } from "@/lib/i18n"
 import { api } from "@/lib/api"
 import { runFullPipeline, type PipelineStatus } from "@/lib/pipeline"
+import type { SheetPreview } from "@/types/api"
+
+function SheetTable({ sheet }: { sheet: SheetPreview }) {
+  const { t } = useI18n()
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="text-muted-foreground text-sm">
+        {t("job.layerRowCount", { total: sheet.row_count.toLocaleString(), shown: sheet.preview.length })}
+      </p>
+      <div className="overflow-auto rounded-md border">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              {sheet.columns.map((c) => (
+                <TableHead key={c}>{c}</TableHead>
+              ))}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {sheet.preview.map((row, i) => (
+              <TableRow key={i}>
+                {sheet.columns.map((c) => (
+                  <TableCell key={c} className="font-mono text-xs">
+                    {formatCell(row[c])}
+                  </TableCell>
+                ))}
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    </div>
+  )
+}
 
 function LayerPreviewTable({
   uploadId,
@@ -31,7 +65,7 @@ function LayerPreviewTable({
   const { t } = useI18n()
   const query = useQuery({
     queryKey: ["layer", uploadId, layer],
-    queryFn: () => api.audits.layerPreview(uploadId, layer),
+    queryFn: () => api.audits.dualLayerPreview(uploadId, layer),
     retry: false,
   })
 
@@ -44,34 +78,14 @@ function LayerPreviewTable({
   if (!query.data) return null
 
   return (
-    <div className="flex flex-col gap-2">
-      <p className="text-muted-foreground text-sm">
-        {t("job.layerRowCount", {
-          total: query.data.row_count.toLocaleString(),
-          shown: query.data.preview.length,
-        })}
-      </p>
-      <div className="overflow-auto rounded-md border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              {query.data.columns.map((c) => (
-                <TableHead key={c}>{c}</TableHead>
-              ))}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {query.data.preview.map((row, i) => (
-              <TableRow key={i}>
-                {query.data!.columns.map((c) => (
-                  <TableCell key={c} className="font-mono text-xs">
-                    {formatCell(row[c])}
-                  </TableCell>
-                ))}
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+    <div className="flex flex-col gap-6">
+      <div className="flex flex-col gap-2">
+        <h3 className="text-sm font-medium">{t("job.sheetFacturas")}</h3>
+        <SheetTable sheet={query.data.sheets.facturas} />
+      </div>
+      <div className="flex flex-col gap-2">
+        <h3 className="text-sm font-medium">{t("job.sheetItems")}</h3>
+        <SheetTable sheet={query.data.sheets.items} />
       </div>
     </div>
   )

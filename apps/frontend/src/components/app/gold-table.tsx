@@ -21,13 +21,34 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useI18n } from "@/lib/i18n"
 import { api } from "@/lib/api"
+import { GoldMatrix } from "@/components/app/gold-matrix"
 
 const ALL = "__all__"
 const PAGE_SIZE = 25
 
 export function GoldTable({ uploadId }: { uploadId: string }) {
+  const { t } = useI18n()
+
+  return (
+    <Tabs defaultValue="resumen">
+      <TabsList>
+        <TabsTrigger value="resumen">{t("gold.viewSummary")}</TabsTrigger>
+        <TabsTrigger value="detallado">{t("gold.viewDetailed")}</TabsTrigger>
+      </TabsList>
+      <TabsContent value="resumen">
+        <GoldMatrix uploadId={uploadId} />
+      </TabsContent>
+      <TabsContent value="detallado">
+        <GoldDetailedTable uploadId={uploadId} />
+      </TabsContent>
+    </Tabs>
+  )
+}
+
+function GoldDetailedTable({ uploadId }: { uploadId: string }) {
   const { t } = useI18n()
   const [severidad, setSeveridad] = useState<string>(ALL)
   const [regla, setRegla] = useState<string>(ALL)

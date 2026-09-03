@@ -23,9 +23,10 @@ def get_db():
 
 @router.post("/generate-excel", response_model=GenerateExcelResponse)
 def generate_excel(payload: GenerateExcelRequest, db: Session = Depends(get_db)):
-    """Genera un excel de ventas sintético (referenciando catálogos
-    reales) con `error_rate` de probabilidad de inyectar una violación
-    por fila. Devuelve una URL de descarga + el detalle de qué se
-    inyectó, para comparar después contra lo que gold detecte."""
+    """Genera un excel de ventas sintético (2 hojas: facturas + items,
+    referenciando catálogos reales) con `error_rate` de probabilidad de
+    inyectar una violación por factura. Devuelve una URL de descarga + el
+    detalle de qué se inyectó, para comparar después contra lo que gold
+    detecte."""
     service = DemoService(db)
-    return service.generate_excel(payload.filas, payload.error_rate)
+    return service.generate_excel(payload.facturas, payload.error_rate)

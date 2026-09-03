@@ -1,7 +1,7 @@
 """
 Seed de catálogos maestros — datos ficticios reproducibles (seed fijo) para
-la demo. Borra y vuelve a poblar sedes, trabajadores, productos, códigos de
-descuento y transferencias.
+la demo. Tira y vuelve a crear sedes, trabajadores, productos, códigos de
+descuento, transferencias y compradores.
 
 Uso (desde apps/backend, con el venv activo):
     python scripts/seed_catalog.py
@@ -25,6 +25,7 @@ from src.infrastructure.db.catalog.models import (
     ProductoModel,
     CodigoDescuentoModel,
     TransferenciaModel,
+    CompradorModel,
 )
 from src.domain.catalog import TipoDescuento, Categoria
 
@@ -155,36 +156,46 @@ PRODUCTOS_POR_CATEGORIA = {
     ],
 }
 
-# (codigo, tipo, valor, dias_inicio_desde_hoy, dias_fin_desde_hoy, sede_codigo, uso_maximo)
-# Deliberadamente hay códigos vencidos, futuros, globales, por sede, y uno
-# vencido + de una sede inactiva — para que el motor de reglas tenga qué
-# detectar más adelante.
+# (codigo, tipo, valor, dias_inicio_desde_hoy, dias_fin_desde_hoy, sede_codigo, uso_maximo, categorias_aplicables)
+# Deliberadamente hay códigos vencidos, futuros, globales, por sede, uno
+# vencido + de una sede inactiva, y algunos restringidos a categorías —
+# para que el motor de reglas tenga qué detectar más adelante.
 CODIGOS_DESCUENTO = [
-    ("BIENVENIDA10", TipoDescuento.PORCENTAJE, 10, -365, 365, None, None),
-    ("VERANO2026", TipoDescuento.PORCENTAJE, 15, -60, 30, None, 500),
-    ("BLACKFRIDAY", TipoDescuento.PORCENTAJE, 30, -200, -170, None, 1000),
-    ("NAVIDAD2025", TipoDescuento.PORCENTAJE, 20, -250, -220, None, None),
-    ("FLASH50K", TipoDescuento.VALOR_FIJO, 50000, -10, 20, None, 200),
-    ("REAPERTURA_BOG", TipoDescuento.PORCENTAJE, 25, -30, 15, "TDA-001", 100),
-    ("MEDELLIN_VIP", TipoDescuento.PORCENTAJE, 12, -90, 90, "TDA-003", None),
-    ("CALI_ANIVERSARIO", TipoDescuento.VALOR_FIJO, 30000, -5, 10, "TDA-005", 150),
-    ("PROXIMO2027", TipoDescuento.PORCENTAJE, 20, 60, 120, None, None),
-    ("ENVIGADO15", TipoDescuento.PORCENTAJE, 15, -15, 45, "TDA-004", 80),
-    ("CARIBE_FIESTA", TipoDescuento.PORCENTAJE, 18, -20, 40, "TDA-006", None),
-    ("CARTAGENA_VERANO", TipoDescuento.VALOR_FIJO, 20000, -30, 30, "TDA-007", 300),
-    ("MADRUGON", TipoDescuento.PORCENTAJE, 40, -3, 3, None, 50),
-    ("FIDELIDAD5", TipoDescuento.PORCENTAJE, 5, -365, 365, None, None),
-    ("CUCUTA20", TipoDescuento.VALOR_FIJO, 15000, -100, -50, "TDA-011", 100),
+    ("BIENVENIDA10", TipoDescuento.PORCENTAJE, 10, -365, 365, None, None, None),
+    ("VERANO2026", TipoDescuento.PORCENTAJE, 15, -60, 30, None, 500, [Categoria.ROPA, Categoria.DEPORTES]),
+    ("BLACKFRIDAY", TipoDescuento.PORCENTAJE, 30, -200, -170, None, 1000, [Categoria.ELECTRONICA, Categoria.HOGAR]),
+    ("NAVIDAD2025", TipoDescuento.PORCENTAJE, 20, -250, -220, None, None, [Categoria.JUGUETERIA]),
+    ("FLASH50K", TipoDescuento.VALOR_FIJO, 50000, -10, 20, None, 200, None),
+    ("REAPERTURA_BOG", TipoDescuento.PORCENTAJE, 25, -30, 15, "TDA-001", 100, None),
+    ("MEDELLIN_VIP", TipoDescuento.PORCENTAJE, 12, -90, 90, "TDA-003", None, None),
+    ("CALI_ANIVERSARIO", TipoDescuento.VALOR_FIJO, 30000, -5, 10, "TDA-005", 150, None),
+    ("PROXIMO2027", TipoDescuento.PORCENTAJE, 20, 60, 120, None, None, None),
+    ("ENVIGADO15", TipoDescuento.PORCENTAJE, 15, -15, 45, "TDA-004", 80, None),
+    ("CARIBE_FIESTA", TipoDescuento.PORCENTAJE, 18, -20, 40, "TDA-006", None, [Categoria.BELLEZA]),
+    ("CARTAGENA_VERANO", TipoDescuento.VALOR_FIJO, 20000, -30, 30, "TDA-007", 300, None),
+    ("MADRUGON", TipoDescuento.PORCENTAJE, 40, -3, 3, None, 50, None),
+    ("FIDELIDAD5", TipoDescuento.PORCENTAJE, 5, -365, 365, None, None, None),
+    ("CUCUTA20", TipoDescuento.VALOR_FIJO, 15000, -100, -50, "TDA-011", 100, None),
 ]
 
 
-def reset_catalog(db) -> None:
-    db.query(TransferenciaModel).delete()
-    db.query(CodigoDescuentoModel).delete()
-    db.query(TrabajadorModel).delete()
-    db.query(ProductoModel).delete()
-    db.query(SedeModel).delete()
-    db.commit()
+def reset_catalog() -> None:
+    """DROP + recreate en vez de solo borrar filas - CodigoDescuentoModel
+    ganó una columna nueva (categorias_aplicables) y no hay Alembic;
+    create_all no altera tablas existentes, así que hay que tirarlas. Son
+    datos sintéticos, se regeneran sin costo."""
+    Base.metadata.drop_all(
+        bind=engine,
+        tables=[
+            TransferenciaModel.__table__,
+            CodigoDescuentoModel.__table__,
+            CompradorModel.__table__,
+            TrabajadorModel.__table__,
+            ProductoModel.__table__,
+            SedeModel.__table__,
+        ],
+    )
+    Base.metadata.create_all(bind=engine)
 
 
 def seed_sedes(db) -> list[str]:
@@ -247,7 +258,7 @@ def seed_productos(db) -> list[str]:
 
 
 def seed_codigos_descuento(db) -> None:
-    for codigo, tipo, valor, dias_inicio, dias_fin, sede_codigo, uso_maximo in CODIGOS_DESCUENTO:
+    for codigo, tipo, valor, dias_inicio, dias_fin, sede_codigo, uso_maximo, categorias in CODIGOS_DESCUENTO:
         db.add(
             CodigoDescuentoModel(
                 codigo=codigo,
@@ -257,9 +268,20 @@ def seed_codigos_descuento(db) -> None:
                 vigencia_fin=date.today() + timedelta(days=dias_fin),
                 sede_codigo=sede_codigo,
                 uso_maximo=uso_maximo,
+                categorias_aplicables=[c.value for c in categorias] if categorias else None,
             )
         )
     db.commit()
+
+
+def seed_compradores(db, total: int = 300) -> list[str]:
+    codigos = []
+    for i in range(1, total + 1):
+        codigo = f"CLI-{i:05d}"
+        db.add(CompradorModel(codigo=codigo, nombre=fake.name()))
+        codigos.append(codigo)
+    db.commit()
+    return codigos
 
 
 def seed_transferencias(
@@ -299,21 +321,22 @@ def seed_transferencias(
 
 
 def main() -> None:
-    Base.metadata.create_all(bind=engine)
+    reset_catalog()
     db = SessionLocal()
     try:
-        reset_catalog(db)
         sede_codigos = seed_sedes(db)
         trabajador_codigos = seed_trabajadores(db, sede_codigos)
         skus = seed_productos(db)
         seed_codigos_descuento(db)
         seed_transferencias(db, sede_codigos, skus)
+        comprador_codigos = seed_compradores(db)
 
         print(f"Sedes: {len(sede_codigos)}")
         print(f"Trabajadores: {len(trabajador_codigos)}")
         print(f"Productos: {len(skus)}")
         print(f"Códigos de descuento: {len(CODIGOS_DESCUENTO)}")
         print(f"Transferencias: {len(sede_codigos) * len(skus)} base + 200 extra")
+        print(f"Compradores: {len(comprador_codigos)}")
         print("Seed completado.")
     finally:
         db.close()

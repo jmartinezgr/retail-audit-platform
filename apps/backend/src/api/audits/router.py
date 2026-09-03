@@ -6,11 +6,13 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from sqlalchemy.orm import Session
 
 from src.api.audits.schemas import (
+    DualLayerPreviewResponse,
+    FacturaDetailResponse,
+    GoldMatrixResponse,
     GoldPageResponse,
     GoldSummaryResponse,
     LayerPreviewResponse,
     RunAuditResponse,
-    VentaDetailResponse,
 )
 from src.api.audits.service import AuditService
 from src.infrastructure.db.session import SessionLocal
@@ -39,16 +41,16 @@ def run_audit(
     return {"upload_id": upload_id, "status": "PROCESSING"}
 
 
-@router.get("/{upload_id}/bronze", response_model=LayerPreviewResponse)
+@router.get("/{upload_id}/bronze", response_model=DualLayerPreviewResponse)
 def get_bronze(upload_id: str, db: Session = Depends(get_db)):
-    """Consulta la tabla bronze resultante"""
+    """Consulta las tablas bronze resultantes (facturas + items)"""
     service = AuditService(db)
     return service.get_bronze_preview(upload_id)
 
 
-@router.get("/{upload_id}/silver", response_model=LayerPreviewResponse)
+@router.get("/{upload_id}/silver", response_model=DualLayerPreviewResponse)
 def get_silver(upload_id: str, db: Session = Depends(get_db)):
-    """Consulta la tabla silver resultante"""
+    """Consulta las tablas silver resultantes (facturas + items)"""
     service = AuditService(db)
     return service.get_silver_preview(upload_id)
 
@@ -102,10 +104,24 @@ def gold_summary(upload_id: str, db: Session = Depends(get_db)):
     return service.get_gold_summary(upload_id)
 
 
-@router.get("/{upload_id}/factura/{numero_factura}", response_model=VentaDetailResponse)
-def get_factura_detail(upload_id: str, numero_factura: str, db: Session = Depends(get_db)):
-    """Todo lo relacionado a una factura puntual: la venta (silver) +
-    cada regla evaluada contra ella (gold) - para la página de detalle
-    de factura del frontend"""
+@router.get("/{upload_id}/gold/matrix", response_model=GoldMatrixResponse)
+def gold_matrix(
+    upload_id: str,
+    limit: int = Query(default=25, gt=0, le=200),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+):
+    """Página de la matriz factura x regla (peor caso por factura) - vía
+    DuckDB, paginada por factura (no por fila) para que el frontend
+    pueda pivotearla a una tabla ancha de un vistazo"""
     service = AuditService(db)
-    return service.get_venta_detail(upload_id, numero_factura)
+    return service.get_gold_matrix(upload_id, limit, offset)
+
+
+@router.get("/{upload_id}/factura/{numero_factura}", response_model=FacturaDetailResponse)
+def get_factura_detail(upload_id: str, numero_factura: str, db: Session = Depends(get_db)):
+    """Todo lo relacionado a una factura puntual: la cabecera y sus ítems
+    (silver) + cada regla evaluada contra ella (gold) - para la página de
+    detalle de factura del frontend"""
+    service = AuditService(db)
+    return service.get_factura_detail(upload_id, numero_factura)

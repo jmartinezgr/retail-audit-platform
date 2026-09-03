@@ -1,7 +1,10 @@
 import type {
   ColumnValidationResponse,
+  DualLayerPreviewResponse,
+  FacturaDetailResponse,
   GenerateExcelRequest,
   GenerateExcelResponse,
+  GoldMatrixResponse,
   GoldPageResponse,
   GoldSummaryResponse,
   LayerPreviewResponse,
@@ -9,7 +12,6 @@ import type {
   RunAuditResponse,
   UploadListResponse,
   UploadStatusResponse,
-  VentaDetailResponse,
 } from "@/types/api"
 import { getSessionId } from "@/lib/session"
 
@@ -77,11 +79,19 @@ export const api = {
         method: "POST",
       }),
 
-    layerPreview: (uploadId: string, layer: "bronze" | "silver" | "gold") =>
-      request<LayerPreviewResponse>(`/audits/${uploadId}/${layer}`),
+    dualLayerPreview: (uploadId: string, layer: "bronze" | "silver") =>
+      request<DualLayerPreviewResponse>(`/audits/${uploadId}/${layer}`),
+
+    goldPreview: (uploadId: string) =>
+      request<LayerPreviewResponse>(`/audits/${uploadId}/gold`),
 
     goldSummary: (uploadId: string) =>
       request<GoldSummaryResponse>(`/audits/${uploadId}/gold/summary`),
+
+    goldMatrix: (uploadId: string, limit: number, offset: number) =>
+      request<GoldMatrixResponse>(
+        `/audits/${uploadId}/gold/matrix?limit=${limit}&offset=${offset}`,
+      ),
 
     queryGold: (
       uploadId: string,
@@ -109,7 +119,7 @@ export const api = {
     },
 
     facturaDetail: (uploadId: string, numeroFactura: string) =>
-      request<VentaDetailResponse>(
+      request<FacturaDetailResponse>(
         `/audits/${uploadId}/factura/${encodeURIComponent(numeroFactura)}`,
       ),
   },

@@ -43,46 +43,66 @@ en memoria, nunca leyendo/escribiendo directo a storage.
 
 - `uploads.py` — `UploadStatus` (enum).
 - `catalog.py` — `TipoDescuento`, `Categoria` (enums).
-- `ventas.py` — `MetodoPago` (enum) + `VENTA_COLUMNAS_REQUERIDAS` /
-  `VENTA_COLUMNAS_OPCIONALES`: el contrato de columnas que se espera del
-  excel. Es la fuente de verdad que usa `silver.py` — `DATA_MODEL.md` lo
-  documenta en formato humano/diagrama, pero el código manda si difieren.
-  También `validar_columnas()`: mismo contrato, pero solo compara nombres
-  de columna (usado por el chequeo rápido de `api/uploads/`, no por
-  silver).
+- `ventas.py` — `MetodoPago` (enum) + `FACTURA_COLUMNAS_REQUERIDAS`/
+  `FACTURA_COLUMNAS_OPCIONALES`/`ITEM_COLUMNAS_REQUERIDAS`/
+  `ITEM_COLUMNAS_OPCIONALES`: el contrato de columnas que se espera de
+  cada una de las 2 hojas del excel (cabecera de factura, ítems). Es la
+  fuente de verdad que usa `silver.py` — `DATA_MODEL.md` lo documenta en
+  formato humano/diagrama, pero el código manda si difieren. También
+  `validar_columnas_factura()`/`validar_columnas_item()`: mismo
+  contrato, pero solo comparan nombres de columna (usado por el chequeo
+  rápido de `api/uploads/`, no por silver).
 - `rules/types.py` — `Severidad` (enum ERROR/WARNING) y `CatalogosSnapshot`
-  (dataclass con los catálogos como `pl.DataFrame` — la forma en la que el
-  motor de reglas necesita los datos, sin saber que vienen de Postgres).
-- `rules/engine.py` — el motor de reglas **estáticas**: `_enrich()` hace
-  un left-join de silver contra los 5 catálogos de una sola vez (evita
-  repetir el join en cada regla), y `evaluar()` corre las 15 reglas
-  (funciones = expresiones de Polars vectorizadas, no loops fila por
-  fila) devolviendo una fila por (factura, regla). Catálogo completo de
-  reglas, severidad y el porqué de cada una en `DATA_MODEL.md`.
-  *(pendiente)* el evaluador de reglas **dinámicas** (JSONLogic,
-  configurables desde el frontend) — motor aparte, no compite con este.
-- `pipeline/bronze.py` — `to_bronze(file_bytes: bytes) -> pl.DataFrame`:
+  (dataclass con los catálogos como `pl.DataFrame`, incluye `compradores`
+  — la forma en la que el motor de reglas necesita los datos, sin saber
+  que vienen de Postgres).
+- `rules/engine.py` — el motor de reglas **estáticas**: `_enrich_facturas()`
+  hace un left-join de la cabecera contra sedes/trabajadores/compradores,
+  `_enrich_items()` une cada ítem con su cabecera (sede/fecha/total) y
+  contra productos/códigos de descuento/transferencias. `evaluar()` corre
+  `_evaluar_cabecera()` (9 reglas, una evaluación por factura, `item_id =
+  null`) + `_evaluar_items()` (9 reglas, una evaluación por ítem) —
+  funciones = expresiones de Polars vectorizadas, no loops fila por fila.
+  Catálogo completo de las 18 reglas, severidad, tipo (endógena/exógena) y
+  ámbito (cabecera/ítem) en `DATA_MODEL.md`. *(pendiente)* el evaluador de
+  reglas **dinámicas** (JSONLogic, configurables desde el frontend) —
+  motor aparte, no compite con este.
+- `pipeline/bronze.py` — `to_bronze(file_bytes: bytes) -> tuple[pl.DataFrame, pl.DataFrame]`:
   recibe los bytes crudos del excel (no una ruta ni un objeto de storage,
-  para que sea testeable sin MinIO) y devuelve todas las columnas como
-  texto (`pl.Utf8`), sin tipar ni validar nada.
-- `pipeline/silver.py` — `to_silver(bronze_df: pl.DataFrame) -> pl.DataFrame`:
-  tipa cada columna contra el esquema de `Venta` (`domain/ventas.py`) y
-  agrega `_errores: List[Utf8]` / `_es_valida: bool` por fila. Ninguna fila
-  se descarta. Si faltan columnas obligatorias por completo, lanza
-  `SilverSchemaError` en vez de intentar procesar fila por fila — eso es un
-  archivo mal formado, no una fila con datos sucios. Esquema completo en
-  `DATA_MODEL.md`.
-- `pipeline/gold.py` — `to_gold(silver_df, catalogos, hoy=None) -> pl.DataFrame`:
+  para que sea testeable sin MinIO), lee las 2 hojas con
+  `pl.read_excel(..., sheet_id=0)` (`sheet_id=0` = cargar todas las hojas,
+  devuelve un dict `{nombre: DataFrame}`) y devuelve `(facturas, items)`
+  con todas las columnas como texto (`pl.Utf8`), sin tipar ni validar
+  nada. Lanza `HojaFaltanteError` si falta alguna de las 2 hojas
+  esperadas (`HOJA_FACTURAS = "facturas"`, `HOJA_ITEMS = "items"`).
+- `pipeline/silver.py` — `to_silver_facturas(bronze_facturas)` /
+  `to_silver_items(bronze_items, numeros_factura_validos)`: tipan cada
+  hoja contra su esquema (`domain/ventas.py`) y agregan
+  `_errores: List[Utf8]` / `_es_valida: bool` por fila. Ninguna fila se
+  descarta. `to_silver_items` recibe el set de `numero_factura` válidos
+  de la cabecera para marcar ítems huérfanos (estructural, pero no
+  evaluable sin la otra hoja) y asigna `item_id` (posicional, 1..N por
+  factura, vía `pl.int_range(...).over("numero_factura")` — robusto
+  incluso si `item_duplicado_en_factura` falla y el mismo producto se
+  repite). Si faltan columnas obligatorias por completo, lanzan
+  `SilverSchemaError` en vez de procesar fila por fila. Esquema completo
+  en `DATA_MODEL.md`.
+- `pipeline/gold.py` — `to_gold(facturas, items, catalogos, hoy=None) -> pl.DataFrame`:
   delgado a propósito, solo llama a `rules.engine.evaluar()`. `hoy` es
   inyectable (default `date.today()`) para que los tests sean
   deterministas sin mockear el reloj del sistema.
-- `demo/generator.py` — `generar_ventas(catalogos, filas, error_rate, seed=None) -> (pl.DataFrame, dict[str,int])`:
-  fila "limpia" contra `catalogos` + probabilidad `error_rate` de aplicar
-  UN mutador (21 disponibles, uno por cada regla de silver/gold, mismo
-  nombre exacto) — devuelve las filas generadas y un conteo por tipo de
-  violación inyectada. `seed` opcional para reproducibilidad en tests.
-  `random`/`date.today()` la hacen "pura salvo por eso", igual que
-  `bronze()`/`gold()` — ver convención abajo.
+- `demo/generator.py` — `generar_ventas(catalogos, facturas, error_rate, seed=None, hoy=None) -> (pl.DataFrame, pl.DataFrame, dict[str,int])`:
+  genera `facturas` facturas, cada una con 1-5 ítems (productos elegidos
+  **sin reemplazo** por factura — con reemplazo, una factura limpia podía
+  repetir producto por pura coincidencia y disparar
+  `item_duplicado_en_factura` sin haber inyectado nada; bug real
+  encontrado y corregido esta sesión), + probabilidad `error_rate` de
+  aplicar UN mutador de `MUTADORES_CABECERA` (14, mutan el dict de la
+  factura) o `MUTADORES_ITEM` (12, mutan/agregan un ítem de la lista) —
+  nunca ambos. Devuelve `(facturas_df, items_df, conteo_por_tipo)`. `seed`
+  y `hoy` opcionales para reproducibilidad en tests. `random`/`date.today()`
+  la hacen "pura salvo por eso", igual que `bronze()`/`gold()` — ver
+  convención abajo.
 
 ### Convención en `pipeline/`: qué es "puro" acá
 
@@ -104,8 +124,11 @@ Implementaciones concretas, sin lógica de negocio.
   `SessionLocal`), y una subcarpeta por feature con sus modelos + repos
   (ej. `db/uploads/models.py`, `db/uploads/repository.py`;
   `db/catalog/models.py` tiene `SedeModel`, `TrabajadorModel`,
-  `ProductoModel`, `CodigoDescuentoModel`, `TransferenciaModel` con
-  `ForeignKey` reales entre sí).
+  `ProductoModel`, `CodigoDescuentoModel` (gana
+  `categorias_aplicables: ARRAY(String)`, nullable — null/vacío = aplica
+  a todas las categorías, mismo patrón que `sede_codigo` nulo = global),
+  `TransferenciaModel`, `CompradorModel` (`codigo`, `nombre` — catálogo
+  simple, sin FK) con `ForeignKey` reales entre sí).
 - `storage/minio_client.py` — cliente de MinIO/S3 (`get_minio_client`,
   `get_object_bytes`, `put_object_bytes` para subir bytes directo
   server-side sin URL prefirmada, `get_presigned_download_url` para
@@ -119,41 +142,53 @@ Implementaciones concretas, sin lógica de negocio.
 - `db/catalog/snapshot.py` — `load_catalog_snapshot(db) -> CatalogosSnapshot`:
   convierte los catálogos de Postgres (vía `CatalogRepository`) a
   `pl.DataFrame` — el único lugar donde SQLAlchemy y `domain/rules`
-  se tocan. Se lee EN VIVO cada vez que se llama, sin cachear — es
-  justo lo que permite re-ejecutar `gold` después de cambiar algo en un
-  catálogo sin tocar bronze/silver. También la usa `api/demo/` para que
-  el generador construya filas con datos reales.
+  se tocan. `productos` ahora incluye `categoria` (necesaria para
+  `codigo_descuento_aplica_a_categoria`) y `codigos_descuento` incluye
+  `categorias_aplicables`. Se lee EN VIVO cada vez que se llama, sin
+  cachear — es justo lo que permite re-ejecutar `gold` después de
+  cambiar algo en un catálogo sin tocar bronze/silver. También la usa
+  `api/demo/` para que el generador construya facturas con datos reales.
 - `storage/duckdb_query.py` — `query_gold()` (filtros + paginación real,
-  incluye `numero_factura` como filtro exacto más), `summary_gold()`
-  (conteo por regla/severidad/paso) y `get_rows_by_factura()` (todas las
-  filas de una tabla Delta cualquiera — silver o gold — para una
-  `numero_factura` exacta, usado por la página de detalle de factura), SQL
-  directo contra la tabla Delta vía `delta_scan()`. Conexión nueva por
-  llamada
-  (~160ms de overhead: instalar/cargar la extensión `delta` + crear el
-  secret — se midió, y para esta escala no vale la pena cachear la
-  conexión con la complejidad de thread-safety que traería). Probado
-  contra 750,000 filas: agregación 0.74s, página filtrada 0.06s.
-  **Importante**: la extensión `delta` NO respeta las variables legacy
-  `SET s3_endpoint=...` (intenta resolver credenciales vía IMDS si no
-  hay un secret, y truena contra MinIO) — hay que usar `CREATE SECRET`.
+  incluye `numero_factura` como filtro exacto), `summary_gold()` (conteo
+  por regla/severidad/paso), `matrix_gold()` (agrega gold por
+  `(numero_factura, regla)` con `bool_and(paso)` — "peor caso": si
+  cualquier `item_id` de esa factura falló esa regla, sale `false` —
+  paginado por FACTURA vía una subquery `DISTINCT numero_factura ORDER
+  BY ... LIMIT/OFFSET`, no por fila agregada, para que una página
+  traiga siempre un número entero de facturas × 18 reglas, lista para
+  pivotear a una matriz ancha en el frontend) y `get_rows_by_factura()`
+  (todas las filas de una tabla Delta cualquiera — silver/facturas,
+  silver/items o gold — para una `numero_factura` exacta, usado por la
+  página de detalle de factura), SQL directo contra la tabla Delta vía
+  `delta_scan()`. Conexión nueva por llamada (~160ms de overhead:
+  instalar/cargar la extensión `delta` + crear el secret — se midió, y
+  para esta escala no vale la pena cachear la conexión con la
+  complejidad de thread-safety que traería). Probado contra 750,000
+  filas: agregación 0.74s, página filtrada 0.06s. **Importante**: la
+  extensión `delta` NO respeta las variables legacy `SET s3_endpoint=...`
+  (intenta resolver credenciales vía IMDS si no hay un secret, y truena
+  contra MinIO) — hay que usar `CREATE SECRET`.
 
 #### Convención de rutas en el bucket
 
 ```
 jobs/{upload_id}/
-  upload/{filename}   ← archivo crudo tal cual se subió (no es Delta)
-  bronze/              ← tabla Delta (domain/pipeline/bronze.py)
-  silver/               ← tabla Delta (domain/pipeline/silver.py)
-  gold/                 ← tabla Delta (domain/pipeline/gold.py)
+  upload/{filename}         ← archivo crudo tal cual se subió (no es Delta)
+  bronze/facturas/          ← tabla Delta (domain/pipeline/bronze.py)
+  bronze/items/             ← tabla Delta
+  silver/facturas/          ← tabla Delta (domain/pipeline/silver.py)
+  silver/items/             ← tabla Delta
+  gold/                      ← tabla Delta (domain/pipeline/gold.py) - una sola tabla plana
 ```
 
-`upload/` guarda el archivo tal cual; `bronze/silver/gold` son cada una
-directamente una tabla Delta (con su propio `_delta_log/`), al mismo nivel
-— nada anidado bajo una carpeta `delta/` genérica. La ruta de `upload/` la
-arma `api/uploads/service.py` y queda guardada en `UploadModel.object_name`;
-las de `bronze/silver/gold` las arma cada `service.py` de `api/` que las
-necesite (hoy solo `api/audits/service.py._bronze_key`).
+`upload/` guarda el archivo tal cual; bronze y silver son 2 hojas → 2
+tablas Delta cada una (`facturas`/`items`, cada una con su propio
+`_delta_log/`); gold sigue siendo una sola tabla plana (distingue
+cabecera de ítem por la columna `item_id`, no por ruta). La ruta de
+`upload/` la arma `api/uploads/service.py` y queda guardada en
+`UploadModel.object_name`; las de bronze/silver/gold las arma
+`api/audits/service.py` (`_bronze_facturas_key`, `_bronze_items_key`,
+`_silver_facturas_key`, `_silver_items_key`, `_gold_key`).
 
 ### `api/` — la única capa que sabe que existe HTTP
 
@@ -170,55 +205,72 @@ Ya existe:
   estado. `GET /uploads/` filtra por `session_id` (dependency
   `get_session_id`, header `X-Client-Id`, cae a `"anonymous"` si no viene
   — ver `PLANNING.md` §2 "Aislar uploads entre visitantes"). `GET
-  /uploads/{id}/validate-columns` (`domain/ventas.validar_columnas` +
-  `domain/pipeline/bronze.read_columns`, que lee solo encabezados vía
-  `read_options={"n_rows": 0}` de fastexcel — no carga filas) da un
-  chequeo instantáneo sin tocar bronze/silver/gold ni el status del job.
+  /uploads/{id}/validate-columns` (`domain/ventas.validar_columnas_factura`
+  + `validar_columnas_item` + `domain/pipeline/bronze.read_columns`, que
+  lee solo encabezados de las 2 hojas vía `read_options={"n_rows": 0}` de
+  fastexcel — no carga filas) da un chequeo instantáneo de ambas hojas
+  sin tocar bronze/silver/gold ni el status del job — responde
+  `{facturas: {...}, items: {...}, valido}` (una `SheetValidationResponse`
+  por hoja).
 - `api/audits/` — dos triggers separados, a propósito (ver `PLANNING.md`
   §"Re-run gold"):
   - `POST /audits/{upload_id}/run` → `AuditService.run_pipeline` (bronze →
-    silver, encadenados — son deterministas del archivo subido, no hay
-    razón para separarlos).
-  - `POST /audits/{upload_id}/run-gold` → `AuditService.run_gold`: lee el
-    `silver` YA GUARDADO en Delta (no rehace bronze/silver) + el estado
-    ACTUAL de los catálogos vía `load_catalog_snapshot()`, y regenera
-    `gold`. Re-ejecutable en cualquier momento sin volver a subir el
-    excel — por ejemplo, después de corregir un código de descuento en
-    el catálogo. Solo acá se marca `UploadStatus.COMPLETED` (antes de que
-    existiera gold, `run_pipeline` dejaba el estado en `PROCESSING` a
-    propósito).
+    silver para las 2 hojas, encadenados — son deterministas del archivo
+    subido, no hay razón para separarlos). `to_silver_items` recibe el
+    set de `numero_factura` de `silver_facturas` para marcar ítems
+    huérfanos.
+  - `POST /audits/{upload_id}/run-gold` → `AuditService.run_gold`: lee
+    `silver/facturas` y `silver/items` YA GUARDADOS en Delta (no rehace
+    bronze/silver) + el estado ACTUAL de los catálogos vía
+    `load_catalog_snapshot()`, y regenera `gold`. Re-ejecutable en
+    cualquier momento sin volver a subir el excel — por ejemplo, después
+    de corregir un código de descuento en el catálogo. Solo acá se marca
+    `UploadStatus.COMPLETED` (antes de que existiera gold, `run_pipeline`
+    dejaba el estado en `PROCESSING` a propósito).
 
   Ambos corren con `BackgroundTasks` de FastAPI (no bloquean la
   respuesta; el `db: Session` inyectado por `Depends` sigue vivo durante
   la tarea de fondo porque FastAPI corre las background tasks *antes*
   del cierre de dependencias `yield` — por diseño, no por casualidad).
 
-  `GET /audits/{upload_id}/bronze`, `.../silver`, `.../gold` leen la
-  tabla Delta correspondiente y la devuelven como preview JSON
-  (`LayerPreviewResponse`, genérico para cualquier capa) — un preview
-  fijo (primeras filas), no pensado para la tabla del frontend.
+  `GET /audits/{upload_id}/bronze` y `.../silver` leen las 2 tablas
+  Delta correspondientes y las devuelven como preview JSON
+  (`DualLayerPreviewResponse` — `{sheets: {facturas: {...}, items:
+  {...}}}`, cada hoja con su propio `row_count`/`columns`/`preview`);
+  `GET .../gold` sigue devolviendo un preview plano de una sola tabla
+  (`LayerPreviewResponse`) — un preview fijo (primeras filas), no
+  pensado para la tabla del frontend.
   `GET /audits/{upload_id}/gold/query` (filtros `severidad`/`regla`/
   `sede_codigo`/`paso`/`numero_factura` + `limit`/`offset`, vía
-  `duckdb_query.query_gold`) y `GET /audits/{upload_id}/gold/summary`
-  (conteo por regla/severidad/paso, vía `duckdb_query.summary_gold`) sí
+  `duckdb_query.query_gold`), `GET /audits/{upload_id}/gold/summary`
+  (conteo por regla/severidad/paso, vía `duckdb_query.summary_gold`) y
+  `GET /audits/{upload_id}/gold/matrix` (filas largas agregadas por
+  "peor caso", vía `duckdb_query.matrix_gold`, paginado por factura) sí
   son para eso. `GET /audits/{upload_id}/factura/{numero_factura}`
-  (`AuditService.get_venta_detail`) junta todo lo relacionado a una
-  factura puntual: la venta tal como quedó en silver (tipada) + cada
-  regla evaluada contra ella en gold — para la página de detalle de
-  factura del frontend, no requiere paginar porque una factura tiene a
-  lo sumo 15 evaluaciones. Si gold todavía no existe para el upload,
-  devuelve `evaluaciones: []` y `gold_ready: false` en vez de fallar
-  (silver, en cambio, si no existe deja que la excepción de
-  `delta_scan` se propague — mismo criterio que el resto de `api/audits/`:
-  "la capa no existe" es un 500, consistente con `/bronze`, `/silver`,
-  `/gold`).
-- `api/demo/` — `POST /demo/generate-excel` (`filas`, `error_rate`) llama
-  a `load_catalog_snapshot()` + `generar_ventas()`, sube el resultado a
-  `demo/{uuid}/ventas_generadas.xlsx` en el bucket (`put_object_bytes`,
-  **no** crea un registro de upload) y devuelve una URL de descarga
-  prefirmada (`get_presigned_download_url`) + el detalle de qué se
-  inyectó. El usuario decide si sube el archivo por el flujo normal de
-  `api/uploads/` para correrlo por el pipeline.
+  (`AuditService.get_factura_detail`) junta todo lo relacionado a una
+  factura puntual: la cabecera y sus ítems tal como quedaron en silver
+  (tipados) + cada regla evaluada contra ella en gold, separadas en
+  `evaluaciones_cabecera`/`evaluaciones_items` (por `item_id is null`) —
+  para la página de detalle de factura del frontend, no requiere paginar
+  porque una factura tiene a lo sumo 18 evaluaciones de cabecera + 18 ×
+  N_ítems de ítem. Si gold todavía no existe para el upload, devuelve
+  `evaluaciones_cabecera: []`, `evaluaciones_items: []` y
+  `gold_ready: false` en vez de fallar (silver, en cambio, si no existe
+  deja que la excepción de `delta_scan` se propague — mismo criterio que
+  el resto de `api/audits/`: "la capa no existe" es un 500, consistente
+  con `/bronze`, `/silver`, `/gold`).
+- `api/demo/` — `POST /demo/generate-excel` (`facturas`, `error_rate`)
+  llama a `load_catalog_snapshot()` + `generar_ventas()`, escribe las 2
+  hojas (`facturas`, `items`) al mismo workbook (`xlsxwriter.Workbook`
+  compartido — `df.write_excel(workbook=wb, worksheet=...)` para cada
+  una, patrón documentado en el propio docstring de `write_excel`), sube
+  el resultado a `demo/{uuid}/ventas_generadas.xlsx` en el bucket
+  (`put_object_bytes`, **no** crea un registro de upload) y devuelve una
+  URL de descarga prefirmada (`get_presigned_download_url`) + el detalle
+  de qué se inyectó (`facturas_totales`, `items_totales`,
+  `facturas_con_error`, `errores_por_tipo`). El usuario decide si sube
+  el archivo por el flujo normal de `api/uploads/` para correrlo por el
+  pipeline.
 
 Pendiente: `api/catalog/` (CRUD de sedes/trabajadores/productos/etc., solo
 si la fase de reglas dinámicas editables lo necesita).
@@ -239,7 +291,7 @@ resuelva como paquete).
 `tests/domain/demo/test_generator.py` para `src/domain/demo/generator.py`).
 Hoy solo cubre `domain/` (pipeline + rules + demo) porque es la parte
 pura/sin infraestructura — justo la ventaja de haber aislado `domain/` de
-FastAPI/SQLAlchemy/Minio desde el principio: 56 tests, todos con datos en
+FastAPI/SQLAlchemy/Minio desde el principio: 87 tests, todos con datos en
 memoria, sin Postgres ni MinIO corriendo (los tests de `rules/engine.py`
 y `demo/generator.py` construyen su propio `CatalogosSnapshot` de
 juguete en vez de leer Postgres de verdad — con cobertura completa
@@ -273,8 +325,8 @@ src/
   lib/i18n.tsx             # I18nProvider/useI18n - t(key, vars) con interpolación {placeholder}
   i18n/translations.ts    # diccionarios en/es, ~80 claves (layout, landing, home, job, gold, columnCheck)
   components/ui/         # shadcn/ui (generados, no se editan a mano salvo necesidad real)
-  components/app/        # componentes propios (layout, status-badge, gold-table, column-check,
-                          #   theme-toggle, language-toggle)
+  components/app/        # componentes propios (layout, status-badge, gold-table, gold-matrix,
+                          #   column-check, theme-toggle, language-toggle)
   pages/                  # una por ruta (landing-page, home-page, job-detail-page, invoice-detail-page)
   App.tsx                 # rutas (react-router) - "/" landing, "/app" home, "/jobs/:id" detalle,
                           #   "/jobs/:id/fac/:facturaId" detalle de factura
@@ -302,22 +354,35 @@ hace el trabajo pesado), así que una tabla headless no aportaba nada ahí
 — se armó con los primitivos de `components/ui/table`. Queda instalada
 para cuando una pantalla necesite ordenar/filtrar en memoria de verdad.
 
-**Filtro por factura + página de detalle**: `gold-table.tsx` suma un
-input de texto (`numero_factura`, match exacto, mismo query param que ya
-usan `severidad`/`regla`/`paso`) y una columna de acción con un ícono
-"ver" (`lucide-react` `Eye`) que linkea a
-`/jobs/{uploadId}/fac/{numero_factura}`. `pages/invoice-detail-page.tsx`
-junta ahí la venta (silver, tipada) y las 15 reglas evaluadas (gold) vía
-`GET /audits/{id}/factura/{numero_factura}` — un solo request, sin
-paginar porque el techo es 15 filas. Si el mismo `numero_factura`
-aparece más de una vez en el excel (la propia violación que detecta
-`factura_no_duplicada`), la página lo muestra con una alerta en vez de
-fallar — se probó específicamente contra una factura duplicada real del
-seed generado, no solo el camino feliz. Al listar evaluaciones hay que
-usar `${regla}-${índice}` como key de React, no solo `regla`: con
-factura duplicada hay dos filas por regla y una key no única rompía el
-render (encontrado con Playwright, consola mostraba "two children with
-the same key").
+**Resumen (matriz) vs. Detallado**: `gold-table.tsx` es ahora un wrapper
+con `Tabs` — "Resumen" (`gold-matrix.tsx`, nuevo) y "Detallado"
+(`GoldDetailedTable`, la tabla plana de antes, sin cambios de fondo).
+`gold-matrix.tsx` pagina por factura (`GET /audits/{id}/gold/matrix`,
+`GoldMatrixRow[]` en formato largo) y pivotea en el cliente a una tabla
+ancha: una fila por factura, una columna por regla (18), celda = ícono
+OK/WARNING/ERROR (`paso`/`severidad` de esa combinación
+factura×regla — ya viene agregada por "peor caso" desde el backend, el
+frontend no agrega nada). Click en una fila navega a
+`/jobs/{uploadId}/fac/{numero_factura}`, igual que el ícono "ver"
+(`lucide-react` `Eye`) de la tabla detallada — ambos caminos llegan a la
+misma página.
+
+**Página de detalle de factura**: `pages/invoice-detail-page.tsx` pide
+`GET /audits/{id}/factura/{numero_factura}` (un solo request) y arma 3
+bloques: card de datos de cabecera (sede, trabajador, comprador, fecha,
+método de pago, IVA, subtotal calculado desde los ítems vs. total
+registrado), card de reglas de cabecera (`evaluaciones_cabecera`, igual
+patrón que antes) y una tabla de ítems donde cada fila es expandible
+(click) para ver las reglas de ítem que le corresponden a ese `item_id`
+puntual (`evaluaciones_items` agrupadas por `item_id` en un `Map` antes
+de renderizar). Si el mismo `numero_factura` aparece más de una vez en
+la hoja `facturas` (caso patológico, no debería pasar — cada cabecera es
+única), la página lo muestra con una alerta en vez de fallar. Al listar
+evaluaciones hay que usar `${regla}-${índice}` como key de React, no
+solo `regla`: con datos duplicados puede haber dos filas por regla y una
+key no única rompía el render (bug real encontrado con Playwright,
+consola mostraba "two children with the same key", corregido en la
+ronda anterior — el mismo cuidado aplica ahora a la lista de ítems).
 
 **Landing vs. app**: `/` es marketing (`landing-page.tsx`, sin `AppLayout`
 — tiene su propio header mínimo), `/app` y `/jobs/:id` sí usan
@@ -441,3 +506,39 @@ React y no puede llamar a `useI18n()`.
   React en la lista de evaluaciones era solo `regla`, colisionaba cuando
   la misma factura (y por lo tanto la misma regla) aparecía dos veces —
   corregido a `${regla}-${índice}`.
+- **2026-09-03**: rediseño grande — `Venta` (una fila = una factura
+  completa) se separó en `Factura` (cabecera) + `ItemFactura` (línea),
+  para modelar facturas multi-ítem de verdad. El excel pasa de 1 hoja a
+  2 (`facturas`, `items`); bronze/silver ganan una tabla por hoja
+  (`bronze/facturas`, `bronze/items`, `silver/facturas`,
+  `silver/items`); gold sigue siendo una sola tabla plana pero gana
+  `item_id` (nullable — `null` = regla de cabecera, con valor = regla de
+  ítem). El motor de reglas pasó de 15 a 18 reglas: `factura_cuadra` →
+  `item_cuadra` (misma fórmula, ahora por ítem), `factura_no_duplicada`
+  (duplicado de número de factura en el archivo) →
+  `item_duplicado_en_factura` (mismo producto repetido dentro de la
+  misma factura — ya no aplica "no se puede repetir numero_factura",
+  eso es justo lo normal con multi-ítem), y 3 reglas nuevas:
+  `comprador_existe` (WARNING, catálogo `Comprador` nuevo — no toda
+  venta tiene comprador registrado), `factura_total_cuadra` (ERROR,
+  cabecera: `total_factura ≈ Σ(total_item) × (1+iva_pct/100)`, la
+  reconciliación de totales con IVA que antes el dominio no podía
+  expresar), `codigo_descuento_aplica_a_categoria` (WARNING,
+  `CodigoDescuentoModel` gana `categorias_aplicables: ARRAY(String)`).
+  `scripts/seed_catalog.py` pasó de `DELETE`+reinsertar a
+  `drop_all`+`create_all` de las tablas de catálogo (no hay Alembic, y
+  `create_all` no altera columnas de tablas existentes). Bug real
+  encontrado y corregido: el generador elegía productos por ítem CON
+  reemplazo, así que una factura "limpia" con pocos productos en el
+  catálogo de prueba podía repetir uno por pura coincidencia y disparar
+  `item_duplicado_en_factura` sin que se hubiera inyectado nada (mismo
+  patrón de falso positivo que `cantidad_dentro_de_transferencias` en
+  una sesión anterior) — corregido eligiendo productos sin reemplazo por
+  factura. Backend: `api/demo/generate-excel` ahora recibe `facturas` en
+  vez de `filas` y escribe las 2 hojas a un mismo
+  `xlsxwriter.Workbook` compartido. Frontend: `gold-table.tsx` gana un
+  toggle Resumen/Detallado (`gold-matrix.tsx` nuevo, matriz factura×regla
+  paginada por factura vía `GET /audits/{id}/gold/matrix`),
+  `invoice-detail-page.tsx` se reescribió para mostrar cabecera + tabla
+  de ítems expandibles. Suite de tests de dominio reescrita contra el
+  esquema nuevo: 87 tests (antes 61).

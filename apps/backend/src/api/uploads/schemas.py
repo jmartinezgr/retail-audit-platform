@@ -53,12 +53,21 @@ class UploadListResponse(BaseModel):
     uploads: list[UploadListItemResponse]
 
 
-class ColumnValidationResponse(BaseModel):
-    """Chequeo rápido de columnas - no corre el pipeline completo"""
+class SheetValidationResponse(BaseModel):
+    """Chequeo rápido de columnas de una hoja del excel"""
 
-    upload_id: str
     columnas_encontradas: list[str]
     columnas_faltantes: list[str]
     columnas_opcionales_presentes: list[str]
     columnas_extra: list[str]
+    valido: bool
+
+
+class ColumnValidationResponse(BaseModel):
+    """Chequeo rápido de columnas de las 2 hojas esperadas (facturas +
+    items) - no corre el pipeline completo"""
+
+    upload_id: str
+    facturas: SheetValidationResponse
+    items: SheetValidationResponse
     valido: bool

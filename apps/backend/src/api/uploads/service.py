@@ -9,9 +9,9 @@ from datetime import timedelta
 from sqlalchemy.orm import Session
 
 from src.infrastructure.db.uploads.repository import UploadRepository
-from src.domain.pipeline.bronze import read_columns
+from src.domain.pipeline.bronze import HOJA_FACTURAS, HOJA_ITEMS, read_columns
 from src.domain.uploads import UploadStatus
-from src.domain.ventas import validar_columnas
+from src.domain.ventas import validar_columnas_factura, validar_columnas_item
 from src.infrastructure.config.settings import settings
 from src.infrastructure.storage.minio_client import get_minio_client, get_object_bytes
 
@@ -65,23 +65,34 @@ class UploadService:
         }
 
     def validate_columns(self, upload_id: str) -> dict:
-        """Chequeo rápido de columnas - NO corre bronze/silver/gold ni
-        toca el status del job."""
+        """Chequeo rápido de columnas de las 2 hojas (facturas + items) -
+        NO corre bronze/silver/gold ni toca el status del job."""
         upload = self.repo.get(upload_id)
         if not upload:
             raise ValueError(f"Upload {upload_id} no encontrado")
 
         file_bytes = get_object_bytes(upload.object_name)
-        columnas = read_columns(file_bytes)
-        resultado = validar_columnas(columnas)
+        hojas = read_columns(file_bytes)
+        r_facturas = validar_columnas_factura(hojas.get(HOJA_FACTURAS, []))
+        r_items = validar_columnas_item(hojas.get(HOJA_ITEMS, []))
 
         return {
             "upload_id": upload_id,
-            "columnas_encontradas": resultado.columnas_encontradas,
-            "columnas_faltantes": resultado.columnas_faltantes,
-            "columnas_opcionales_presentes": resultado.columnas_opcionales_presentes,
-            "columnas_extra": resultado.columnas_extra,
-            "valido": resultado.valido,
+            "facturas": {
+                "columnas_encontradas": r_facturas.columnas_encontradas,
+                "columnas_faltantes": r_facturas.columnas_faltantes,
+                "columnas_opcionales_presentes": r_facturas.columnas_opcionales_presentes,
+                "columnas_extra": r_facturas.columnas_extra,
+                "valido": r_facturas.valido,
+            },
+            "items": {
+                "columnas_encontradas": r_items.columnas_encontradas,
+                "columnas_faltantes": r_items.columnas_faltantes,
+                "columnas_opcionales_presentes": r_items.columnas_opcionales_presentes,
+                "columnas_extra": r_items.columnas_extra,
+                "valido": r_items.valido,
+            },
+            "valido": r_facturas.valido and r_items.valido,
         }
 
     def list_recent(self, session_id: str, limit: int = 20) -> list[dict]:

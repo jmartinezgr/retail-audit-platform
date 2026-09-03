@@ -18,10 +18,11 @@ class Severidad(str, Enum):
 @dataclass
 class CatalogosSnapshot:
     """Los catálogos maestros como DataFrames de Polars - lo que necesita
-    el motor de reglas para evaluar una venta."""
+    el motor de reglas para evaluar una factura."""
 
     sedes: pl.DataFrame
     trabajadores: pl.DataFrame
     productos: pl.DataFrame
     codigos_descuento: pl.DataFrame
     transferencias: pl.DataFrame
+    compradores: pl.DataFrame

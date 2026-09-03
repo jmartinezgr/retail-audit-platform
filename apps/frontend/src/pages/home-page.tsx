@@ -24,7 +24,7 @@ export function HomePage() {
     refetchInterval: 4000,
   })
 
-  const [filas, setFilas] = useState(1000)
+  const [facturas, setFacturas] = useState(1000)
   const [errorRate, setErrorRate] = useState(0.1)
   const [generating, setGenerating] = useState(false)
 
@@ -34,8 +34,8 @@ export function HomePage() {
   async function handleGenerate() {
     setGenerating(true)
     try {
-      const gen = await api.demo.generateExcel({ filas, error_rate: errorRate })
-      const filename = `demo_${filas}filas_${Math.round(errorRate * 100)}pct.xlsx`
+      const gen = await api.demo.generateExcel({ facturas, error_rate: errorRate })
+      const filename = `demo_${facturas}facturas_${Math.round(errorRate * 100)}pct.xlsx`
 
       const fileRes = await fetch(gen.download_url)
       const blob = await fileRes.blob()
@@ -43,7 +43,7 @@ export function HomePage() {
 
       const uploadId = await uploadFile(blob, filename)
       toast.success(
-        `${gen.filas_totales} ${t("home.toastGenerated", { count: gen.filas_con_error })}`,
+        t("home.toastGenerated", { facturas: gen.facturas_totales, items: gen.items_totales, count: gen.facturas_con_error }),
       )
       await queryClient.invalidateQueries({ queryKey: ["uploads"] })
       navigate(`/jobs/${uploadId}`)
@@ -82,14 +82,14 @@ export function HomePage() {
           <CardContent className="flex flex-col gap-3">
             <div className="grid grid-cols-2 gap-3">
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="filas">{t("home.rowsLabel")}</Label>
+                <Label htmlFor="facturas">{t("home.rowsLabel")}</Label>
                 <Input
-                  id="filas"
+                  id="facturas"
                   type="number"
                   min={1}
                   max={50000}
-                  value={filas}
-                  onChange={(e) => setFilas(Number(e.target.value))}
+                  value={facturas}
+                  onChange={(e) => setFacturas(Number(e.target.value))}
                 />
               </div>
               <div className="flex flex-col gap-1.5">
