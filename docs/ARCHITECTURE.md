@@ -318,6 +318,7 @@ la app en producción (ej. `seed_catalog.py`). Se ejecutan con
 ```
 src/
   types/api.ts         # espeja los schemas Pydantic del backend, a mano
+  data/rules-catalog.ts   # catálogo estático de las 18 reglas para la landing (no depende del backend)
   lib/api.ts            # cliente HTTP tipado (fetch), un objeto `api.*` por router del backend
   lib/session.ts          # UUID anónimo en localStorage - lib/api.ts lo manda como X-Client-Id
   lib/pipeline.ts        # runFullPipeline() - corre bronze→silver→gold esperando cada capa de verdad
@@ -542,3 +543,24 @@ React y no puede llamar a `useI18n()`.
   `invoice-detail-page.tsx` se reescribió para mostrar cabecera + tabla
   de ítems expandibles. Suite de tests de dominio reescrita contra el
   esquema nuevo: 87 tests (antes 61).
+- **2026-09-03**: en `gold-table.tsx`/`invoice-detail-page.tsx`, el badge
+  de severidad dejó de ser rojo/destructivo para reglas ERROR sin
+  importar el resultado — se leía como "esto falló" aunque `paso=true`.
+  Ahora el color solo lo lleva el resultado (ícono verde/rojo/ámbar);
+  severidad se muestra como etiqueta neutra al lado del nombre de la
+  regla. El detalle de factura suma un total calculado
+  (subtotal × (1+IVA)) al lado del total registrado con ícono de
+  cuadre/no-cuadre. Se probó rotar verticalmente las 18 columnas de la
+  matriz para ahorrar espacio — no gustó en la práctica, revertido a
+  texto horizontal con `title` para el nombre completo.
+- **2026-09-03**: landing page gana una sección "Las 18 reglas"
+  (`data/rules-catalog.ts`, nuevo — catálogo estático de las 18 reglas
+  con severidad/tipo/descripción, para no depender del backend en una
+  página de marketing) entre las cards endógena/exógena y el origen del
+  proyecto — dos columnas (cabecera/ítem), cada regla con su nombre real
+  (mono, en español a propósito, igual que el resto de datos del
+  dominio), severidad con color (acá sí, sin resultado con el que
+  competir) y tipo endógena/exógena en badge neutro, más descripción
+  traducida en/es (`rule.*` en `i18n/translations.ts`). Debe mantenerse
+  en sync a mano con `domain/rules/engine.py`/`DATA_MODEL.md` si cambia
+  el motor — no hay generación automática desde el backend.

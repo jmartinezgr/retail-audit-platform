@@ -15,6 +15,7 @@ import { ThemeToggle } from "@/components/app/theme-toggle"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { REGLAS_CABECERA, REGLAS_ITEM, type RuleCatalogEntry } from "@/data/rules-catalog"
 import { useI18n } from "@/lib/i18n"
 import type { TranslationKey } from "@/i18n/translations"
 
@@ -25,6 +26,31 @@ const CAPAS: { titleKey: TranslationKey; descKey: TranslationKey; icon: typeof F
 ]
 
 const STACK = ["FastAPI", "Polars", "Delta Lake", "DuckDB", "Postgres", "MinIO", "React", "TypeScript"]
+
+function RuleRow({ rule }: { rule: RuleCatalogEntry }) {
+  const { t } = useI18n()
+  return (
+    <div className="flex flex-col gap-1 border-b py-3 last:border-b-0">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="font-mono text-sm font-medium">{rule.nombre}</span>
+        <Badge
+          variant="outline"
+          className={
+            rule.severidad === "ERROR"
+              ? "border-red-500/40 text-red-700 dark:text-red-400"
+              : "border-amber-500/40 text-amber-700 dark:text-amber-400"
+          }
+        >
+          {rule.severidad}
+        </Badge>
+        <Badge variant="outline" className="text-muted-foreground font-normal">
+          {rule.tipo === "endogena" ? t("landing.ruleTypeEndogenous") : t("landing.ruleTypeExogenous")}
+        </Badge>
+      </div>
+      <p className="text-muted-foreground text-sm">{t(rule.descKey)}</p>
+    </div>
+  )
+}
 
 export function LandingPage() {
   const { t } = useI18n()
@@ -99,6 +125,35 @@ export function LandingPage() {
                 <CardTitle>{t("landing.exogenousTitle")}</CardTitle>
                 <CardDescription>{t("landing.exogenousDesc")}</CardDescription>
               </CardHeader>
+            </Card>
+          </div>
+        </section>
+
+        <section className="flex flex-col gap-6">
+          <div className="text-center">
+            <h2 className="text-2xl font-semibold">{t("landing.rulesTitle")}</h2>
+            <p className="text-muted-foreground mt-1">{t("landing.rulesSubtitle")}</p>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">{t("landing.rulesHeaderGroup")}</CardTitle>
+              </CardHeader>
+              <div className="flex flex-col px-6 pb-6">
+                {REGLAS_CABECERA.map((rule) => (
+                  <RuleRow key={rule.nombre} rule={rule} />
+                ))}
+              </div>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">{t("landing.rulesItemGroup")}</CardTitle>
+              </CardHeader>
+              <div className="flex flex-col px-6 pb-6">
+                {REGLAS_ITEM.map((rule) => (
+                  <RuleRow key={rule.nombre} rule={rule} />
+                ))}
+              </div>
             </Card>
           </div>
         </section>
