@@ -141,6 +141,7 @@ export function JobDetailPage() {
       await queryClient.invalidateQueries({ queryKey: ["layer", uploadId] })
       await queryClient.invalidateQueries({ queryKey: ["gold-summary", uploadId] })
       await queryClient.invalidateQueries({ queryKey: ["gold-query", uploadId] })
+      await queryClient.invalidateQueries({ queryKey: ["gold-matrix", uploadId] })
     } catch (e) {
       toast.error(e instanceof Error ? e.message : t("job.toastPipelineError"))
     } finally {

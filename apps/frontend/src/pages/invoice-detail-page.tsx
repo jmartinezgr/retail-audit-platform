@@ -31,6 +31,15 @@ function formatValue(value: unknown): string {
   return String(value)
 }
 
+/** Para columnas numéricas (cantidad, precio, total) - con separador de
+ * miles, a diferencia de formatValue que se usa también para códigos/SKUs
+ * donde no aplica. */
+function formatNumber(value: unknown): string {
+  if (value === null || value === undefined || value === "") return "—"
+  const n = Number(value)
+  return Number.isFinite(n) ? n.toLocaleString() : String(value)
+}
+
 function EvaluationRow({ row }: { row: GoldRow }) {
   // El ícono es la única señal de color para el RESULTADO (pasó/falló) -
   // la severidad, al lado del nombre, se muestra siempre neutra: es una
@@ -83,16 +92,18 @@ function ItemRow({
           {open ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
         </TableCell>
         <TableCell className="font-mono text-xs">{formatValue(item.producto_sku)}</TableCell>
-        <TableCell>{formatValue(item.cantidad)}</TableCell>
-        <TableCell>{formatValue(item.precio_unitario)}</TableCell>
+        <TableCell>{formatNumber(item.cantidad)}</TableCell>
+        <TableCell>{formatNumber(item.precio_unitario)}</TableCell>
         <TableCell>{formatValue(item.codigo_descuento)}</TableCell>
-        <TableCell>{formatValue(item.total_item)}</TableCell>
+        <TableCell>{formatNumber(item.total_item)}</TableCell>
         <TableCell>
           {errores > 0 ? (
-            <Badge variant="destructive">{t("invoice.itemErrors", { count: errores })}</Badge>
+            <Badge variant="destructive">
+              {errores === 1 ? t("invoice.itemError") : t("invoice.itemErrors", { count: errores })}
+            </Badge>
           ) : warnings > 0 ? (
             <Badge variant="outline" className="border-amber-500/40 text-amber-700 dark:text-amber-400">
-              {t("invoice.itemWarnings", { count: warnings })}
+              {warnings === 1 ? t("invoice.itemWarning") : t("invoice.itemWarnings", { count: warnings })}
             </Badge>
           ) : (
             <span className="text-emerald-600 dark:text-emerald-400">{t("gold.pass")}</span>
@@ -213,7 +224,7 @@ export function InvoiceDetailPage() {
               <div className="flex flex-col gap-0.5">
                 <span className="text-muted-foreground text-xs">{t("invoice.fieldTotalFactura")}</span>
                 <span className="flex items-center gap-1.5 font-medium">
-                  {formatValue(factura.total_factura)}
+                  {formatNumber(factura.total_factura)}
                   {totalCuadra ? (
                     <CheckCircle2
                       className="size-3.5 shrink-0 text-emerald-600 dark:text-emerald-400"
