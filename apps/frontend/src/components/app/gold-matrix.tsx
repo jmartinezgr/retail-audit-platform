@@ -59,15 +59,32 @@ export function GoldMatrix({ uploadId }: { uploadId: string }) {
     <div className="flex flex-col gap-3">
       <p className="text-muted-foreground text-sm">{t("gold.matrixHint")}</p>
 
+      <div className="text-muted-foreground flex flex-wrap items-center gap-4 text-xs">
+        <span className="flex items-center gap-1.5">
+          <CheckCircle2 className="size-3.5 text-emerald-600 dark:text-emerald-400" /> {t("gold.legendPass")}
+        </span>
+        <span className="flex items-center gap-1.5">
+          <AlertTriangle className="size-3.5 text-amber-600 dark:text-amber-400" /> {t("gold.legendWarningFail")}
+        </span>
+        <span className="flex items-center gap-1.5">
+          <XCircle className="size-3.5 text-red-600 dark:text-red-400" /> {t("gold.legendErrorFail")}
+        </span>
+      </div>
+
       <div className="overflow-auto rounded-md border">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="sticky left-0 bg-background">{t("gold.colInvoice")}</TableHead>
-              <TableHead>{t("gold.colStore")}</TableHead>
+              <TableHead className="bg-background sticky left-0 align-bottom">{t("gold.colInvoice")}</TableHead>
+              <TableHead className="align-bottom">{t("gold.colStore")}</TableHead>
               {reglas.map((r) => (
-                <TableHead key={r} className="text-center" title={r}>
-                  <span className="font-mono text-[0.65rem] whitespace-nowrap">{r}</span>
+                <TableHead key={r} className="w-8 px-0 text-center align-bottom" title={r}>
+                  <div
+                    className="mx-auto w-fit pb-1 font-mono text-[0.65rem] whitespace-nowrap"
+                    style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}
+                  >
+                    {r}
+                  </div>
                 </TableHead>
               ))}
             </TableRow>

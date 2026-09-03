@@ -152,6 +152,13 @@ const en = {
   "invoice.colStatus": "Status",
   "invoice.itemErrors": "{count} errors",
   "invoice.itemWarnings": "{count} warnings",
+  "invoice.fieldCalculatedTotal": "Calculated total",
+  "invoice.totalMatches": "Matches the calculated total",
+  "invoice.totalMismatch": "Doesn't match the calculated total",
+  "invoice.totalMismatchHint": "The registered total doesn't match subtotal × (1 + IVA) — that's what factura_total_cuadra flags.",
+  "gold.legendPass": "Passed",
+  "gold.legendWarningFail": "Failed a WARNING rule",
+  "gold.legendErrorFail": "Failed an ERROR rule",
 } as const
 
 const es: Record<keyof typeof en, string> = {
@@ -295,6 +302,13 @@ const es: Record<keyof typeof en, string> = {
   "invoice.colStatus": "Estado",
   "invoice.itemErrors": "{count} errores",
   "invoice.itemWarnings": "{count} advertencias",
+  "invoice.fieldCalculatedTotal": "Total calculado",
+  "invoice.totalMatches": "Cuadra con el total calculado",
+  "invoice.totalMismatch": "No cuadra con el total calculado",
+  "invoice.totalMismatchHint": "El total registrado no cuadra con subtotal × (1 + IVA) — eso es justo lo que marca factura_total_cuadra.",
+  "gold.legendPass": "Pasó",
+  "gold.legendWarningFail": "Falló una regla WARNING",
+  "gold.legendErrorFail": "Falló una regla ERROR",
 }
 
 export const translations = { en, es }

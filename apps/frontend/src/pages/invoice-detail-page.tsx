@@ -32,13 +32,20 @@ function formatValue(value: unknown): string {
 }
 
 function EvaluationRow({ row }: { row: GoldRow }) {
+  // El ícono es la única señal de color para el RESULTADO (pasó/falló) -
+  // la severidad, al lado del nombre, se muestra siempre neutra: es una
+  // propiedad de la regla (qué tan grave sería si falla), no del
+  // resultado, y un badge rojo ahí confundía "esto es ERROR" con "esto
+  // falló" incluso cuando paso=true.
   const icon =
     row.paso === null ? (
       <span className="text-muted-foreground w-4 shrink-0 text-center">—</span>
     ) : row.paso ? (
       <CheckCircle2 className="size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
-    ) : (
+    ) : row.severidad === "ERROR" ? (
       <XCircle className="size-4 shrink-0 text-red-600 dark:text-red-400" />
+    ) : (
+      <AlertTriangle className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />
     )
 
   return (
@@ -47,7 +54,9 @@ function EvaluationRow({ row }: { row: GoldRow }) {
       <div className="flex flex-1 flex-col gap-0.5">
         <div className="flex flex-wrap items-center gap-2">
           <span className="font-mono text-sm font-medium">{row.regla}</span>
-          <Badge variant={row.severidad === "ERROR" ? "destructive" : "outline"}>{row.severidad}</Badge>
+          <Badge variant="outline" className="text-muted-foreground font-normal">
+            {row.severidad}
+          </Badge>
         </div>
         <p className="text-muted-foreground text-sm">{row.mensaje}</p>
       </div>
@@ -82,7 +91,9 @@ function ItemRow({
           {errores > 0 ? (
             <Badge variant="destructive">{t("invoice.itemErrors", { count: errores })}</Badge>
           ) : warnings > 0 ? (
-            <Badge variant="outline">{t("invoice.itemWarnings", { count: warnings })}</Badge>
+            <Badge variant="outline" className="border-amber-500/40 text-amber-700 dark:text-amber-400">
+              {t("invoice.itemWarnings", { count: warnings })}
+            </Badge>
           ) : (
             <span className="text-emerald-600 dark:text-emerald-400">{t("gold.pass")}</span>
           )}
@@ -157,6 +168,10 @@ export function InvoiceDetailPage() {
   }
 
   const subtotalItems = items.reduce((acc, it) => acc + (Number(it.total_item) || 0), 0)
+  const ivaPct = Number(factura.iva_pct) || 0
+  const totalCalculado = subtotalItems * (1 + ivaPct / 100)
+  const totalRegistrado = Number(factura.total_factura)
+  const totalCuadra = Number.isFinite(totalRegistrado) && Math.abs(totalCalculado - totalRegistrado) <= 0.01
 
   return (
     <div className="flex flex-col gap-4">
@@ -181,15 +196,42 @@ export function InvoiceDetailPage() {
         <CardHeader>
           <CardTitle>{t("invoice.dataTitle")}</CardTitle>
         </CardHeader>
-        <CardContent className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-          <Field label={t("invoice.fieldSede")} value={formatValue(factura.sede_codigo)} />
-          <Field label={t("invoice.fieldTrabajador")} value={formatValue(factura.trabajador_codigo)} />
-          <Field label={t("invoice.fieldComprador")} value={formatValue(factura.comprador_codigo)} />
-          <Field label={t("invoice.fieldFecha")} value={formatValue(factura.fecha)} />
-          <Field label={t("invoice.fieldMetodoPago")} value={formatValue(factura.metodo_pago)} />
-          <Field label={t("invoice.fieldIva")} value={formatValue(factura.iva_pct)} />
-          <Field label={t("invoice.fieldSubtotalItems")} value={subtotalItems.toLocaleString()} />
-          <Field label={t("invoice.fieldTotalFactura")} value={formatValue(factura.total_factura)} />
+        <CardContent className="flex flex-col gap-5">
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+            <Field label={t("invoice.fieldSede")} value={formatValue(factura.sede_codigo)} />
+            <Field label={t("invoice.fieldTrabajador")} value={formatValue(factura.trabajador_codigo)} />
+            <Field label={t("invoice.fieldComprador")} value={formatValue(factura.comprador_codigo)} />
+            <Field label={t("invoice.fieldFecha")} value={formatValue(factura.fecha)} />
+            <Field label={t("invoice.fieldMetodoPago")} value={formatValue(factura.metodo_pago)} />
+          </div>
+
+          <div className="border-t pt-4">
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+              <Field label={t("invoice.fieldSubtotalItems")} value={subtotalItems.toLocaleString()} />
+              <Field label={t("invoice.fieldIva")} value={`${ivaPct}%`} />
+              <Field label={t("invoice.fieldCalculatedTotal")} value={totalCalculado.toLocaleString()} />
+              <div className="flex flex-col gap-0.5">
+                <span className="text-muted-foreground text-xs">{t("invoice.fieldTotalFactura")}</span>
+                <span className="flex items-center gap-1.5 font-medium">
+                  {formatValue(factura.total_factura)}
+                  {totalCuadra ? (
+                    <CheckCircle2
+                      className="size-3.5 shrink-0 text-emerald-600 dark:text-emerald-400"
+                      aria-label={t("invoice.totalMatches")}
+                    />
+                  ) : (
+                    <XCircle
+                      className="size-3.5 shrink-0 text-red-600 dark:text-red-400"
+                      aria-label={t("invoice.totalMismatch")}
+                    />
+                  )}
+                </span>
+              </div>
+            </div>
+            {!totalCuadra && (
+              <p className="text-muted-foreground mt-2 text-xs">{t("invoice.totalMismatchHint")}</p>
+            )}
+          </div>
         </CardContent>
       </Card>
 

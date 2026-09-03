@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query"
-import { Eye } from "lucide-react"
+import { CheckCircle2, Eye, XCircle } from "lucide-react"
 import { type FormEvent, useState } from "react"
 import { Link } from "react-router-dom"
 
@@ -176,8 +176,8 @@ function GoldDetailedTable({ uploadId }: { uploadId: string }) {
               <TableHead>{t("gold.colStore")}</TableHead>
               <TableHead>{t("gold.colDate")}</TableHead>
               <TableHead>{t("gold.colRule")}</TableHead>
-              <TableHead>{t("gold.colSeverity")}</TableHead>
               <TableHead>{t("gold.colResult")}</TableHead>
+              <TableHead>{t("gold.colSeverity")}</TableHead>
               <TableHead>{t("gold.colMessage")}</TableHead>
               <TableHead className="w-10" />
             </TableRow>
@@ -197,18 +197,22 @@ function GoldDetailedTable({ uploadId }: { uploadId: string }) {
                 <TableCell>{row.fecha}</TableCell>
                 <TableCell className="font-mono text-xs">{row.regla}</TableCell>
                 <TableCell>
-                  <Badge variant={row.severidad === "ERROR" ? "destructive" : "outline"}>
-                    {row.severidad}
-                  </Badge>
-                </TableCell>
-                <TableCell>
                   {row.paso === null ? (
                     <span className="text-muted-foreground">—</span>
                   ) : row.paso ? (
-                    <span className="text-emerald-600 dark:text-emerald-400">{t("gold.pass")}</span>
+                    <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
+                      <CheckCircle2 className="size-3.5" /> {t("gold.pass")}
+                    </span>
                   ) : (
-                    <span className="font-medium text-red-600 dark:text-red-400">{t("gold.fail")}</span>
+                    <span className="inline-flex items-center gap-1 font-medium text-red-600 dark:text-red-400">
+                      <XCircle className="size-3.5" /> {t("gold.fail")}
+                    </span>
                   )}
+                </TableCell>
+                <TableCell>
+                  <Badge variant="outline" className="text-muted-foreground font-normal">
+                    {row.severidad}
+                  </Badge>
                 </TableCell>
                 <TableCell className="text-muted-foreground max-w-xs truncate">
                   {row.mensaje}
