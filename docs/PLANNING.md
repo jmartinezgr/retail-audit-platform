@@ -438,7 +438,10 @@ Script Python (Faker + numpy) que:
 3. ✅ Capa bronze + silver (parseo/tipado, sin reglas de negocio aún).
 4. ✅ Motor de reglas estáticas + capa gold + endpoint para consultar resultados.
 5. ✅ Generador de excels sintéticos con `error_rate`.
-6. ✅ Frontend: subir/generar, ver progreso, ver tabla de auditoría (ver §7).
+6. ✅ Frontend: subir/generar, ver progreso, ver tabla de auditoría, matriz
+   resumen, detalle de factura, dashboard ejecutivo, export de facturas
+   problemáticas a excel (ver §7) — creció bastante más allá del alcance
+   original de la fase, incluyendo el rediseño a facturas multi-ítem (§3).
 7. Reglas dinámicas editables (si alcanza el tiempo).
 8. Deploy en capas gratuitas, ajustar si hace falta el VPS de $5.
 
