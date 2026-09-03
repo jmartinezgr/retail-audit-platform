@@ -5,6 +5,7 @@ import { Link, useParams } from "react-router-dom"
 import { toast } from "sonner"
 
 import { ColumnCheck } from "@/components/app/column-check"
+import { Dashboard } from "@/components/app/dashboard"
 import { GoldTable } from "@/components/app/gold-table"
 import { StatusBadge } from "@/components/app/status-badge"
 import { Button } from "@/components/ui/button"
@@ -142,6 +143,7 @@ export function JobDetailPage() {
       await queryClient.invalidateQueries({ queryKey: ["gold-summary", uploadId] })
       await queryClient.invalidateQueries({ queryKey: ["gold-query", uploadId] })
       await queryClient.invalidateQueries({ queryKey: ["gold-matrix", uploadId] })
+      await queryClient.invalidateQueries({ queryKey: ["dashboard", uploadId] })
     } catch (e) {
       toast.error(e instanceof Error ? e.message : t("job.toastPipelineError"))
     } finally {
@@ -175,12 +177,16 @@ export function JobDetailPage() {
 
       {processMsg && <p className="text-muted-foreground text-sm">{processMsg}</p>}
 
-      <Tabs defaultValue="gold">
+      <Tabs defaultValue="dashboard">
         <TabsList>
+          <TabsTrigger value="dashboard">{t("job.tabDashboard")}</TabsTrigger>
           <TabsTrigger value="bronze">{t("job.tabBronze")}</TabsTrigger>
           <TabsTrigger value="silver">{t("job.tabSilver")}</TabsTrigger>
           <TabsTrigger value="gold">{t("job.tabGold")}</TabsTrigger>
         </TabsList>
+        <TabsContent value="dashboard">
+          <Dashboard uploadId={uploadId} />
+        </TabsContent>
         <TabsContent value="bronze">
           <LayerPreviewTable uploadId={uploadId} layer="bronze" />
         </TabsContent>

@@ -3,7 +3,12 @@ Servicio de auditoría - orquesta el pipeline (domain) sobre un upload
 confirmado, usando los adaptadores de infraestructura.
 """
 
+import uuid
+from io import BytesIO
+
+import polars as pl
 from sqlalchemy.orm import Session
+from xlsxwriter import Workbook
 
 from src.domain.pipeline.bronze import to_bronze
 from src.domain.pipeline.gold import to_gold
@@ -12,7 +17,32 @@ from src.domain.uploads import UploadStatus
 from src.infrastructure.db.catalog.snapshot import load_catalog_snapshot
 from src.infrastructure.db.uploads.repository import UploadRepository
 from src.infrastructure.storage import duckdb_query, lake
-from src.infrastructure.storage.minio_client import get_object_bytes
+from src.infrastructure.storage.minio_client import (
+    get_object_bytes,
+    get_presigned_download_url,
+    put_object_bytes,
+)
+
+XLSX_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+_RESUMEN_SCHEMA = {
+    "numero_factura": pl.Utf8,
+    "sede_codigo": pl.Utf8,
+    "fecha": pl.Date,
+    "trabajador_codigo": pl.Utf8,
+    "comprador_codigo": pl.Utf8,
+    "total_factura": pl.Float64,
+    "tiene_error": pl.Boolean,
+    "tiene_warning": pl.Boolean,
+    "violaciones": pl.Int64,
+}
+_DETALLE_SCHEMA = {
+    "numero_factura": pl.Utf8,
+    "item_id": pl.Int64,
+    "regla": pl.Utf8,
+    "severidad": pl.Utf8,
+    "mensaje": pl.Utf8,
+}
 
 
 def _bronze_facturas_key(upload_id: str) -> str:
@@ -184,3 +214,28 @@ class AuditService:
             "evaluaciones_items": evaluaciones_items,
             "gold_ready": gold_ready,
         }
+
+    def get_dashboard(self, upload_id: str) -> dict:
+        stats = duckdb_query.dashboard_stats(_gold_key(upload_id), _silver_facturas_key(upload_id))
+        return {"upload_id": upload_id, **stats}
+
+    def export_problematic(self, upload_id: str) -> dict:
+        """Genera un excel de 2 hojas con las facturas que tienen al
+        menos una violación (resumen de cabecera + detalle de cada regla
+        que falló) y lo sube al bucket - mismo patrón que
+        api/demo/service.py para el excel sintético."""
+        resumen, detalle = duckdb_query.problematic_facturas(_gold_key(upload_id), _silver_facturas_key(upload_id))
+
+        resumen_df = pl.DataFrame(resumen, schema=_RESUMEN_SCHEMA) if resumen else pl.DataFrame(schema=_RESUMEN_SCHEMA)
+        detalle_df = pl.DataFrame(detalle, schema=_DETALLE_SCHEMA) if detalle else pl.DataFrame(schema=_DETALLE_SCHEMA)
+
+        buffer = BytesIO()
+        with Workbook(buffer, {"in_memory": True}) as wb:
+            resumen_df.write_excel(workbook=wb, worksheet="facturas_problematicas")
+            detalle_df.write_excel(workbook=wb, worksheet="violaciones")
+
+        object_name = f"jobs/{upload_id}/export/{uuid.uuid4()}.xlsx"
+        put_object_bytes(object_name, buffer.getvalue(), XLSX_CONTENT_TYPE)
+        download_url = get_presigned_download_url(object_name)
+
+        return {"download_url": download_url, "facturas_problematicas": len(resumen)}

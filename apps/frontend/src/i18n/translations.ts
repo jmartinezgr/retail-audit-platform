@@ -91,6 +91,7 @@ const en = {
   // Job detail
   "job.process": "Process (bronze → silver → gold)",
   "job.refreshStatus": "Refresh status",
+  "job.tabDashboard": "Dashboard",
   "job.tabBronze": "Bronze",
   "job.tabSilver": "Silver",
   "job.tabGold": "Gold",
@@ -185,6 +186,24 @@ const en = {
   "gold.legendPass": "Passed",
   "gold.legendWarningFail": "Failed a WARNING rule",
   "gold.legendErrorFail": "Failed an ERROR rule",
+
+  // Dashboard
+  "dashboard.subtitle": "Aggregate stats for this run - computed server-side over the full gold table, not just the current page.",
+  "dashboard.exportButton": "Export problematic invoices (Excel)",
+  "dashboard.exportSuccess": "Exported {count} problematic invoices",
+  "dashboard.exportError": "Error generating the export",
+  "dashboard.totalFacturas": "Total invoices",
+  "dashboard.facturasValidas": "Fully valid ({pct}%)",
+  "dashboard.facturasConError": "With at least one ERROR",
+  "dashboard.facturasSoloWarning": "Only WARNINGs",
+  "dashboard.itemsDuplicados": "Duplicate items",
+  "dashboard.totalNoCuadra": "Total doesn't reconcile",
+  "dashboard.valueTitle": "Registered value vs. validated value",
+  "dashboard.valueTotal": "Total registered",
+  "dashboard.valueValidated": "Validated (fully valid invoices only)",
+  "dashboard.valueHint": "{pct}% of the registered value belongs to invoices with zero violations.",
+  "dashboard.rulesRankingTitle": "Most frequent violations",
+  "dashboard.rulesRankingSubtitle": "By number of invoices affected, not by row count - an item rule doesn't get inflated just because an invoice has more line items.",
 } as const
 
 const es: Record<keyof typeof en, string> = {
@@ -270,6 +289,7 @@ const es: Record<keyof typeof en, string> = {
 
   "job.process": "Procesar (bronze → silver → gold)",
   "job.refreshStatus": "Refrescar estado",
+  "job.tabDashboard": "Dashboard",
   "job.tabBronze": "Bronze",
   "job.tabSilver": "Silver",
   "job.tabGold": "Gold",
@@ -361,6 +381,23 @@ const es: Record<keyof typeof en, string> = {
   "gold.legendPass": "Pasó",
   "gold.legendWarningFail": "Falló una regla WARNING",
   "gold.legendErrorFail": "Falló una regla ERROR",
+
+  "dashboard.subtitle": "Estadísticas agregadas de esta corrida - calculadas del lado del servidor sobre toda la tabla gold, no solo la página actual.",
+  "dashboard.exportButton": "Exportar facturas problemáticas (Excel)",
+  "dashboard.exportSuccess": "Se exportaron {count} facturas problemáticas",
+  "dashboard.exportError": "Error generando la exportación",
+  "dashboard.totalFacturas": "Facturas totales",
+  "dashboard.facturasValidas": "100% válidas ({pct}%)",
+  "dashboard.facturasConError": "Con al menos un ERROR",
+  "dashboard.facturasSoloWarning": "Solo WARNINGs",
+  "dashboard.itemsDuplicados": "Ítems duplicados",
+  "dashboard.totalNoCuadra": "Total no cuadra",
+  "dashboard.valueTitle": "Valor registrado vs. valor validado",
+  "dashboard.valueTotal": "Total registrado",
+  "dashboard.valueValidated": "Validado (solo facturas 100% válidas)",
+  "dashboard.valueHint": "El {pct}% del valor registrado corresponde a facturas sin ninguna violación.",
+  "dashboard.rulesRankingTitle": "Violaciones más frecuentes",
+  "dashboard.rulesRankingSubtitle": "Por cantidad de facturas afectadas, no por filas - una regla de ítem no pesa más solo porque una factura tenga más ítems.",
 }
 
 export const translations = { en, es }

@@ -129,6 +129,30 @@ export interface ColumnValidationResponse {
   valido: boolean
 }
 
+export interface RuleFailureBreakdown {
+  regla: string
+  severidad: "ERROR" | "WARNING"
+  facturas_afectadas: number
+}
+
+export interface DashboardResponse {
+  upload_id: string
+  total_facturas: number
+  facturas_validas: number
+  facturas_con_error: number
+  facturas_solo_warning: number
+  facturas_con_items_duplicados: number
+  facturas_con_total_no_cuadra: number
+  valor_total_registrado: number
+  valor_validado: number
+  reglas: RuleFailureBreakdown[]
+}
+
+export interface ExportProblematicResponse {
+  download_url: string
+  facturas_problematicas: number
+}
+
 export interface GenerateExcelRequest {
   facturas: number
   error_rate: number

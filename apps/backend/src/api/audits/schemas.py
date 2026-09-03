@@ -72,3 +72,35 @@ class FacturaDetailResponse(BaseModel):
     evaluaciones_cabecera: list[dict]
     evaluaciones_items: list[dict]
     gold_ready: bool
+
+
+class RuleFailureBreakdown(BaseModel):
+    """Cuántas facturas (no filas) tienen esta regla fallando - para el
+    ranking de reglas más problemáticas del dashboard"""
+
+    regla: str
+    severidad: str
+    facturas_afectadas: int
+
+
+class DashboardResponse(BaseModel):
+    """Estadísticas agregadas de una corrida - resumen ejecutivo para
+    la pestaña Dashboard del frontend"""
+
+    upload_id: str
+    total_facturas: int
+    facturas_validas: int
+    facturas_con_error: int
+    facturas_solo_warning: int
+    facturas_con_items_duplicados: int
+    facturas_con_total_no_cuadra: int
+    valor_total_registrado: float
+    valor_validado: float
+    reglas: list[RuleFailureBreakdown]
+
+
+class ExportProblematicResponse(BaseModel):
+    """URL de descarga del excel (2 hojas) con las facturas problemáticas"""
+
+    download_url: str
+    facturas_problematicas: int

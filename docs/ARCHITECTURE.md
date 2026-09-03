@@ -259,6 +259,30 @@ Ya existe:
   deja que la excepción de `delta_scan` se propague — mismo criterio que
   el resto de `api/audits/`: "la capa no existe" es un 500, consistente
   con `/bronze`, `/silver`, `/gold`).
+  `GET /audits/{upload_id}/dashboard` (`AuditService.get_dashboard` →
+  `duckdb_query.dashboard_stats`) agrega toda la corrida: facturas
+  válidas/con error/solo warning, problemas de itemización (ítems
+  duplicados, total que no cuadra), valor registrado vs. valor de las
+  facturas 100% válidas, y qué reglas fallan más — contando FACTURAS
+  afectadas por regla (`count(DISTINCT numero_factura)`), no filas, para
+  que una regla de ítem no pese artificialmente más solo porque una
+  factura tenga más ítems. Cruza gold con `silver/facturas` (gold no
+  trae el monto) usando `IS NOT DISTINCT FROM` en vez de `USING` en el
+  join — encontrado con datos reales: `numero_factura` puede ser NULL de
+  verdad (mutador `numero_factura_vacio`), y en SQL `NULL = NULL` nunca
+  es true, así que un `USING`/`=` normal descarta esas facturas en
+  silencio del conteo total (bug real: 200 facturas pero
+  válidas+error+warning sumaba 198 — el mismo problema existía también
+  en `matrix_gold`, corregido ahí también).
+  `POST /audits/{upload_id}/export/problematic`
+  (`AuditService.export_problematic` → `duckdb_query.problematic_facturas`)
+  genera un excel de 2 hojas (`facturas_problematicas`: cabecera +
+  conteo de violaciones por factura con al menos un ERROR o WARNING;
+  `violaciones`: cada evaluación que falló, con `item_id`) y lo sube al
+  bucket bajo `jobs/{id}/export/` — mismo patrón `xlsxwriter.Workbook`
+  compartido + `put_object_bytes` + `get_presigned_download_url` que
+  `api/demo/`, solo que acá el insumo es gold/silver de una corrida real
+  en vez de datos generados.
 - `api/demo/` — `POST /demo/generate-excel` (`facturas`, `error_rate`)
   llama a `load_catalog_snapshot()` + `generar_ventas()`, escribe las 2
   hojas (`facturas`, `items`) al mismo workbook (`xlsxwriter.Workbook`
@@ -327,7 +351,7 @@ src/
   i18n/translations.ts    # diccionarios en/es, ~80 claves (layout, landing, home, job, gold, columnCheck)
   components/ui/         # shadcn/ui (generados, no se editan a mano salvo necesidad real)
   components/app/        # componentes propios (layout, status-badge, gold-table, gold-matrix,
-                          #   column-check, theme-toggle, language-toggle)
+                          #   dashboard, column-check, theme-toggle, language-toggle)
   pages/                  # una por ruta (landing-page, home-page, job-detail-page, invoice-detail-page)
   App.tsx                 # rutas (react-router) - "/" landing, "/app" home, "/jobs/:id" detalle,
                           #   "/jobs/:id/fac/:facturaId" detalle de factura
@@ -564,3 +588,21 @@ React y no puede llamar a `useI18n()`.
   traducida en/es (`rule.*` en `i18n/translations.ts`). Debe mantenerse
   en sync a mano con `domain/rules/engine.py`/`DATA_MODEL.md` si cambia
   el motor — no hay generación automática desde el backend.
+- **2026-09-03**: nuevo `GET /audits/{id}/dashboard` (resumen ejecutivo
+  de la corrida: válidas/error/warning, itemización, valor registrado
+  vs. validado, ranking de reglas por facturas afectadas) y
+  `POST /audits/{id}/export/problematic` (excel de 2 hojas con las
+  facturas problemáticas + detalle de violaciones, mismo patrón
+  `xlsxwriter` que `api/demo/`). Bug real encontrado con datos reales al
+  construirlos: el join gold↔silver/facturas con `USING (numero_factura)`
+  descartaba en silencio facturas con `numero_factura` NULL de verdad
+  (mutador `numero_factura_vacio`) porque `NULL = NULL` no es true en
+  SQL — corregido con `IS NOT DISTINCT FROM` (también en `matrix_gold`,
+  mismo problema preexistente). Frontend: nueva pestaña "Dashboard"
+  (`components/app/dashboard.tsx`, primera pestaña de
+  `job-detail-page.tsx`, antes de Bronze/Silver/Gold) con cards de
+  estadísticas, comparación de valor registrado/validado con barra de
+  progreso, ranking de reglas más frecuentes (barras, por facturas
+  afectadas no por filas), y el botón de exportar — reusa
+  `downloadBlobToDisk` (`lib/pipeline.ts`) para el mismo flujo de
+  descarga que ya usaba la generación de datos sintéticos.

@@ -6,7 +6,9 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from sqlalchemy.orm import Session
 
 from src.api.audits.schemas import (
+    DashboardResponse,
     DualLayerPreviewResponse,
+    ExportProblematicResponse,
     FacturaDetailResponse,
     GoldMatrixResponse,
     GoldPageResponse,
@@ -125,3 +127,20 @@ def get_factura_detail(upload_id: str, numero_factura: str, db: Session = Depend
     detalle de factura del frontend"""
     service = AuditService(db)
     return service.get_factura_detail(upload_id, numero_factura)
+
+
+@router.get("/{upload_id}/dashboard", response_model=DashboardResponse)
+def get_dashboard(upload_id: str, db: Session = Depends(get_db)):
+    """Resumen ejecutivo de la corrida: facturas válidas/con error/solo
+    warning, problemas de itemización, valor registrado vs. valor de las
+    facturas 100% válidas, y ranking de reglas por facturas afectadas"""
+    service = AuditService(db)
+    return service.get_dashboard(upload_id)
+
+
+@router.post("/{upload_id}/export/problematic", response_model=ExportProblematicResponse)
+def export_problematic(upload_id: str, db: Session = Depends(get_db)):
+    """Genera y sube un excel (2 hojas: resumen de facturas problemáticas
+    + detalle de cada violación) y devuelve una URL de descarga prefirmada"""
+    service = AuditService(db)
+    return service.export_problematic(upload_id)

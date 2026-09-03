@@ -1,6 +1,8 @@
 import type {
   ColumnValidationResponse,
+  DashboardResponse,
   DualLayerPreviewResponse,
+  ExportProblematicResponse,
   FacturaDetailResponse,
   GenerateExcelRequest,
   GenerateExcelResponse,
@@ -122,6 +124,14 @@ export const api = {
       request<FacturaDetailResponse>(
         `/audits/${uploadId}/factura/${encodeURIComponent(numeroFactura)}`,
       ),
+
+    dashboard: (uploadId: string) =>
+      request<DashboardResponse>(`/audits/${uploadId}/dashboard`),
+
+    exportProblematic: (uploadId: string) =>
+      request<ExportProblematicResponse>(`/audits/${uploadId}/export/problematic`, {
+        method: "POST",
+      }),
   },
 
   demo: {

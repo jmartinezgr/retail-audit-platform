@@ -116,7 +116,7 @@ def matrix_gold(object_key: str, limit: int = 25, offset: int = 0) -> tuple[list
             pagina AS (
                 SELECT DISTINCT numero_factura FROM agg ORDER BY numero_factura LIMIT ? OFFSET ?
             )
-            SELECT agg.* FROM agg JOIN pagina USING (numero_factura)
+            SELECT agg.* FROM agg JOIN pagina ON agg.numero_factura IS NOT DISTINCT FROM pagina.numero_factura
             ORDER BY numero_factura, regla
             """,
             [limit, offset],
@@ -141,6 +141,113 @@ def get_rows_by_factura(object_key: str, numero_factura: str) -> list[dict]:
         .pl()
         .to_dicts()
     )
+
+
+def dashboard_stats(gold_key: str, silver_facturas_key: str) -> dict:
+    """Estadísticas agregadas de una corrida: cuántas facturas son
+    válidas/tienen error/solo warning, cuántas tienen problemas de
+    itemización (producto duplicado, total que no cuadra), valor
+    registrado vs. valor de las facturas 100% válidas, y qué reglas
+    fallan más (por cantidad de facturas afectadas, no de filas - una
+    regla de ítem no debe pesar más solo porque una factura tenga más
+    ítems). Une gold con silver/facturas (gold no trae el monto)."""
+    con = _connection()
+    gold_uri = _delta_uri(gold_key)
+    facturas_uri = _delta_uri(silver_facturas_key)
+
+    resumen = con.execute(
+        f"""
+        WITH factura_status AS (
+            SELECT
+                numero_factura,
+                bool_or(severidad = 'ERROR' AND NOT paso) AS has_error,
+                bool_or(severidad = 'WARNING' AND NOT paso) AS has_warning,
+                bool_or(regla = 'item_duplicado_en_factura' AND NOT paso) AS has_item_duplicado,
+                bool_or(regla = 'factura_total_cuadra' AND NOT paso) AS has_total_mismatch
+            FROM delta_scan('{gold_uri}')
+            GROUP BY numero_factura
+        )
+        SELECT
+            count(*) AS total_facturas,
+            count(*) FILTER (WHERE NOT has_error AND NOT has_warning) AS facturas_validas,
+            count(*) FILTER (WHERE has_error) AS facturas_con_error,
+            count(*) FILTER (WHERE has_warning AND NOT has_error) AS facturas_solo_warning,
+            count(*) FILTER (WHERE has_item_duplicado) AS facturas_con_items_duplicados,
+            count(*) FILTER (WHERE has_total_mismatch) AS facturas_con_total_no_cuadra,
+            coalesce(sum(f.total_factura), 0) AS valor_total_registrado,
+            coalesce(sum(f.total_factura) FILTER (WHERE NOT fs.has_error AND NOT fs.has_warning), 0) AS valor_validado
+        FROM delta_scan('{facturas_uri}') f
+        LEFT JOIN factura_status fs ON f.numero_factura IS NOT DISTINCT FROM fs.numero_factura
+        """
+    ).pl().to_dicts()[0]
+
+    reglas = (
+        con.execute(
+            f"""
+            SELECT regla, any_value(severidad) AS severidad, count(DISTINCT numero_factura) AS facturas_afectadas
+            FROM delta_scan('{gold_uri}')
+            WHERE NOT paso
+            GROUP BY regla
+            ORDER BY facturas_afectadas DESC
+            """
+        )
+        .pl()
+        .to_dicts()
+    )
+
+    return {**resumen, "reglas": reglas}
+
+
+def problematic_facturas(gold_key: str, silver_facturas_key: str) -> tuple[list[dict], list[dict]]:
+    """Para la exportación: (resumen, detalle). `resumen` es una fila por
+    factura problemática (al menos una violación) con sus datos de
+    cabecera; `detalle` es cada evaluación que falló (item_id incluido)
+    para esas facturas - literalmente toda fila de gold con paso=false,
+    ya que eso es justo lo que hace que una factura sea "problemática"."""
+    con = _connection()
+    gold_uri = _delta_uri(gold_key)
+    facturas_uri = _delta_uri(silver_facturas_key)
+
+    resumen = (
+        con.execute(
+            f"""
+            WITH factura_status AS (
+                SELECT
+                    numero_factura,
+                    bool_or(severidad = 'ERROR' AND NOT paso) AS tiene_error,
+                    bool_or(severidad = 'WARNING' AND NOT paso) AS tiene_warning,
+                    count(*) FILTER (WHERE NOT paso) AS violaciones
+                FROM delta_scan('{gold_uri}')
+                GROUP BY numero_factura
+            )
+            SELECT
+                f.numero_factura, f.sede_codigo, f.fecha, f.trabajador_codigo,
+                f.comprador_codigo, f.total_factura,
+                fs.tiene_error, fs.tiene_warning, fs.violaciones
+            FROM delta_scan('{facturas_uri}') f
+            JOIN factura_status fs ON f.numero_factura IS NOT DISTINCT FROM fs.numero_factura
+            WHERE fs.tiene_error OR fs.tiene_warning
+            ORDER BY fs.tiene_error DESC, f.numero_factura
+            """
+        )
+        .pl()
+        .to_dicts()
+    )
+
+    detalle = (
+        con.execute(
+            f"""
+            SELECT numero_factura, item_id, regla, severidad, mensaje
+            FROM delta_scan('{gold_uri}')
+            WHERE NOT paso
+            ORDER BY numero_factura, regla
+            """
+        )
+        .pl()
+        .to_dicts()
+    )
+
+    return resumen, detalle
 
 
 def summary_gold(object_key: str) -> list[dict]:
