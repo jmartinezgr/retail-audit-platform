@@ -75,16 +75,11 @@ export function GoldMatrix({ uploadId }: { uploadId: string }) {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="bg-background sticky left-0 align-bottom">{t("gold.colInvoice")}</TableHead>
-              <TableHead className="align-bottom">{t("gold.colStore")}</TableHead>
+              <TableHead className="bg-background sticky left-0">{t("gold.colInvoice")}</TableHead>
+              <TableHead>{t("gold.colStore")}</TableHead>
               {reglas.map((r) => (
-                <TableHead key={r} className="w-8 px-0 text-center align-bottom" title={r}>
-                  <div
-                    className="mx-auto w-fit pb-1 font-mono text-[0.65rem] whitespace-nowrap"
-                    style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}
-                  >
-                    {r}
-                  </div>
+                <TableHead key={r} className="text-center" title={r}>
+                  <span className="font-mono text-[0.65rem] whitespace-nowrap">{r}</span>
                 </TableHead>
               ))}
             </TableRow>
