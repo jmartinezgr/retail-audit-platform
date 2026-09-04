@@ -432,17 +432,21 @@ Script Python (Faker + numpy) que:
   tardar ~30s en despertar".
 - **Postgres**: Neon (gratis, sin el límite de 90 días que tiene el Postgres
   free de Render).
-- **Storage**: Cloudflare R2 (10GB gratis, API compatible con S3/MinIO — el
-  mismo cliente `boto3`/`minio` sirve local y en prod, solo cambia el
-  endpoint; `deltalake`/Polars también apuntan a R2 vía `storage_options`
-  S3-compatible). **Verificado (2026-09-04)**: escritura + lectura de una
-  tabla Delta real contra un bucket R2 de prueba, confirmando `_delta_log/`
-  con un commit `WRITE` genuino (`delta-rs:py-1.6.3`, misma versión que
-  `requirements.txt`) — mismo `storage_options` que usa
-  `infrastructure/storage/lake.py` para MinIO, solo cambiando
-  `AWS_ENDPOINT_URL` al endpoint de R2, `AWS_REGION` a `"auto"` (en vez de
-  `"us-east-1"`) y `AWS_ALLOW_HTTP` a `"false"` (R2 es HTTPS-only, MinIO
-  local es HTTP). Ya no es la pieza menos probada del plan de deploy.
+- **Storage**: Cloudflare R2 (10GB gratis, API compatible con S3/MinIO —
+  no hay un adapter por proveedor: el mismo `infrastructure/storage/
+  lake.py` (`deltalake`/Polars) y `minio_client.py` (SDK `minio`) sirven
+  local y en prod, cambiando solo variables de entorno). **Verificado
+  (2026-09-04)**: escritura + lectura de una tabla Delta real (confirmando
+  `_delta_log/` con un commit `WRITE` genuino, `delta-rs:py-1.6.3`) y
+  subida/descarga/URL-prefirmada de objetos, corriendo el código real de
+  la app (no un script aparte) contra un bucket R2 de prueba. Encontrado
+  en el camino: `secure=False` estaba hardcodeado en `minio_client.py` y
+  `lake.py` armaba el endpoint siempre con `http://` — ambos asumían
+  HTTP, y R2 es HTTPS-only. Corregido agregando dos settings nuevos
+  (`MINIO_SECURE: bool`, default `False` = comportamiento local actual;
+  `MINIO_REGION: str`, default `"us-east-1"`) — en prod contra R2 basta
+  con `MINIO_SECURE=true` y `MINIO_REGION=auto`. Ya no es la pieza menos
+  probada del plan de deploy.
 - **Fallback si el cold-start del free tier arruina la primera impresión**:
   VPS barato (DigitalOcean/Hetzner ~$5/mes) corriendo el `docker-compose.yml`
   que ya existe casi tal cual — reusa toda la infra que ya armaste, sin

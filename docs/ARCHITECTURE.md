@@ -154,13 +154,25 @@ Implementaciones concretas, sin lógica de negocio.
 - `storage/minio_client.py` — cliente de MinIO/S3 (`get_minio_client`,
   `get_object_bytes`, `put_object_bytes` para subir bytes directo
   server-side sin URL prefirmada, `get_presigned_download_url` para
-  dar una URL de descarga temporal — usados por `api/demo/`).
+  dar una URL de descarga temporal — usados por `api/demo/`). `secure`
+  del cliente `Minio` viene de `settings.MINIO_SECURE`, no hardcodeado.
 - `storage/lake.py` — `write_delta()` / `read_delta()`: Polars + `deltalake`
   contra el bucket S3-compatible. `storage_options` incluye
   `AWS_ALLOW_HTTP` y `AWS_S3_ALLOW_UNSAFE_RENAME` porque MinIO (y S3
   alternativos en general) no dan por garantizado el locking atómico que
   `delta-rs` asume por defecto en S3 real — como el pipeline es de un solo
   escritor por job, no hace falta ese locking.
+  **Local vs. R2, mismo código**: no hay un adapter por proveedor — ambos
+  módulos leen `Settings.MINIO_ENDPOINT/ACCESS_KEY/SECRET_KEY/BUCKET`
+  (`infrastructure/config/settings.py`), más dos flags nuevos que
+  distinguen el entorno: `MINIO_SECURE: bool` (esquema HTTP/HTTPS —
+  MinIO local es HTTP, R2 es HTTPS-only) y `MINIO_REGION: str` (MinIO no
+  lo usa, R2 exige literalmente `"auto"`). Cambiar de MinIO a R2 en prod
+  es solo cambiar variables de entorno, cero código nuevo — verificado
+  2026-09-04 corriendo `lake.write_delta/read_delta` y
+  `minio_client.put_object_bytes/get_object_bytes/get_presigned_download_url`
+  de verdad (no un script aparte) contra un bucket R2 real con
+  `MINIO_SECURE=true`, `MINIO_REGION=auto`.
 - `db/catalog/snapshot.py` — `load_catalog_snapshot(db) -> CatalogosSnapshot`:
   convierte los catálogos de Postgres (vía `CatalogRepository`) a
   `pl.DataFrame` — el único lugar donde SQLAlchemy y `domain/rules`
@@ -702,3 +714,14 @@ React y no puede llamar a `useI18n()`.
   en la columna `regla` de gold, no por una lista fija de 18 nombres,
   así que no necesitaron cambios de código para soportar reglas nuevas.
   Suite de tests: 97 (antes 87), nuevo `tests/domain/rules/test_dynamic.py`.
+- **2026-09-04**: verificado que `deltalake`/Polars y el SDK `minio`
+  funcionan contra Cloudflare R2 sin cambiar de adapter (ver
+  `storage/lake.py`/`storage/minio_client.py` arriba) — corriendo el
+  código real de la app contra un bucket R2 de prueba, no un script
+  aparte. Bug real encontrado: `minio_client.py` tenía `secure=False`
+  hardcodeado y `lake.py` armaba el endpoint siempre con `http://` —
+  ambos asumían HTTP, y R2 es HTTPS-only. Corregido con dos settings
+  nuevos en `Settings` (`MINIO_SECURE: bool = False`,
+  `MINIO_REGION: str = "us-east-1"`, ambos con default = comportamiento
+  local actual) — en prod contra R2 basta con `MINIO_SECURE=true` +
+  `MINIO_REGION=auto`, sin tocar código.

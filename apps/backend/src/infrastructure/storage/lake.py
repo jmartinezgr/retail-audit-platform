@@ -9,12 +9,13 @@ from src.infrastructure.config.settings import settings
 
 
 def _storage_options() -> dict[str, str]:
+    scheme = "https" if settings.MINIO_SECURE else "http"
     return {
-        "AWS_ENDPOINT_URL": f"http://{settings.MINIO_ENDPOINT}",
+        "AWS_ENDPOINT_URL": f"{scheme}://{settings.MINIO_ENDPOINT}",
         "AWS_ACCESS_KEY_ID": settings.MINIO_ACCESS_KEY,
         "AWS_SECRET_ACCESS_KEY": settings.MINIO_SECRET_KEY,
-        "AWS_REGION": "us-east-1",
-        "AWS_ALLOW_HTTP": "true",
+        "AWS_REGION": settings.MINIO_REGION,
+        "AWS_ALLOW_HTTP": "false" if settings.MINIO_SECURE else "true",
         "AWS_S3_ALLOW_UNSAFE_RENAME": "true",
     }
 
