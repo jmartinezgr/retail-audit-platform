@@ -431,7 +431,15 @@ Script Python (Faker + numpy) que:
   inactividad, aceptable para demo de portafolio con una nota de "puede
   tardar ~30s en despertar".
 - **Postgres**: Neon (gratis, sin el límite de 90 días que tiene el Postgres
-  free de Render).
+  free de Render). **Verificado (2026-09-04)**: proyecto Neon nuevo
+  (`auditlake`), corriendo el código real de la app contra él —
+  `Base.metadata.create_all` (arranque simulado vía `from src.main import
+  app`) crea las 8 tablas correctamente, y `scripts/seed_catalog.py`
+  siembra los catálogos completos sin tocar nada. Cero cambios de código:
+  el `DATABASE_URL` de Neon usa el mismo prefijo `postgresql+psycopg://`
+  que ya espera `infrastructure/db/session.py`, solo cambia el string
+  (agrega `?sslmode=require&channel_binding=require`, que psycopg3
+  soporta nativo).
 - **Storage**: Cloudflare R2 (10GB gratis, API compatible con S3/MinIO —
   no hay un adapter por proveedor: el mismo `infrastructure/storage/
   lake.py` (`deltalake`/Polars), `s3_client.py` (SDK `minio`) y
