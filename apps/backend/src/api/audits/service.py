@@ -18,7 +18,7 @@ from src.infrastructure.db.catalog.snapshot import load_catalog_snapshot
 from src.infrastructure.db.rules.snapshot import load_reglas_dinamicas
 from src.infrastructure.db.uploads.repository import UploadRepository
 from src.infrastructure.storage import duckdb_query, lake
-from src.infrastructure.storage.minio_client import (
+from src.infrastructure.storage.s3_client import (
     get_object_bytes,
     get_presigned_download_url,
     put_object_bytes,

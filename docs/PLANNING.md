@@ -434,18 +434,22 @@ Script Python (Faker + numpy) que:
   free de Render).
 - **Storage**: Cloudflare R2 (10GB gratis, API compatible con S3/MinIO —
   no hay un adapter por proveedor: el mismo `infrastructure/storage/
-  lake.py` (`deltalake`/Polars) y `minio_client.py` (SDK `minio`) sirven
-  local y en prod, cambiando solo variables de entorno). **Verificado
-  (2026-09-04)**: escritura + lectura de una tabla Delta real (confirmando
-  `_delta_log/` con un commit `WRITE` genuino, `delta-rs:py-1.6.3`) y
-  subida/descarga/URL-prefirmada de objetos, corriendo el código real de
-  la app (no un script aparte) contra un bucket R2 de prueba. Encontrado
-  en el camino: `secure=False` estaba hardcodeado en `minio_client.py` y
-  `lake.py` armaba el endpoint siempre con `http://` — ambos asumían
-  HTTP, y R2 es HTTPS-only. Corregido agregando dos settings nuevos
-  (`MINIO_SECURE: bool`, default `False` = comportamiento local actual;
-  `MINIO_REGION: str`, default `"us-east-1"`) — en prod contra R2 basta
-  con `MINIO_SECURE=true` y `MINIO_REGION=auto`. Ya no es la pieza menos
+  lake.py` (`deltalake`/Polars), `s3_client.py` (SDK `minio`) y
+  `duckdb_query.py` (extensión `delta` de DuckDB) sirven local y en
+  prod, cambiando solo variables de entorno). **Verificado (2026-09-04)**:
+  escritura + lectura de una tabla Delta real (confirmando `_delta_log/`
+  con un commit `WRITE` genuino, `delta-rs:py-1.6.3`), subida/descarga/
+  URL-prefirmada de objetos, y una consulta filtrada vía
+  `duckdb_query.query_gold()` — los tres corriendo el código real de la
+  app (no un script aparte) contra un bucket R2 de prueba. Encontrado en
+  el camino: los tres módulos asumían HTTP (`secure=False` hardcodeado
+  en `s3_client.py`, `lake.py` armaba el endpoint siempre con `http://`,
+  `duckdb_query.py` fijaba `USE_SSL false`/`REGION 'us-east-1'` en su
+  `CREATE SECRET`) — y R2 es HTTPS-only, exige region `"auto"`.
+  Corregido agregando dos settings nuevos (`S3_SECURE: bool`, default
+  `False` = comportamiento local actual; `S3_REGION: str`, default
+  `"us-east-1"`) que ahora leen los tres — en prod contra R2 basta
+  con `S3_SECURE=true` y `S3_REGION=auto`. Ya no es la pieza menos
   probada del plan de deploy.
 - **Fallback si el cold-start del free tier arruina la primera impresión**:
   VPS barato (DigitalOcean/Hetzner ~$5/mes) corriendo el `docker-compose.yml`

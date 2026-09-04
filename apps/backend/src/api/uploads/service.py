@@ -13,7 +13,7 @@ from src.domain.pipeline.bronze import HOJA_FACTURAS, HOJA_ITEMS, read_columns
 from src.domain.uploads import UploadStatus
 from src.domain.ventas import validar_columnas_factura, validar_columnas_item
 from src.infrastructure.config.settings import settings
-from src.infrastructure.storage.minio_client import get_minio_client, get_object_bytes
+from src.infrastructure.storage.s3_client import get_s3_client, get_object_bytes
 
 
 class UploadService:
@@ -22,7 +22,7 @@ class UploadService:
     def __init__(self, db: Session):
         self.db = db
         self.repo = UploadRepository(db)
-        self.minio = get_minio_client()
+        self.s3 = get_s3_client()
 
     def request_upload_url(self, filename: str, session_id: str) -> dict[str, str]:
         """Generar URL presignada para upload"""
@@ -30,8 +30,8 @@ class UploadService:
         object_name = f"jobs/{upload_id}/upload/{filename}"
 
         # Genera URL presignada
-        upload_url = self.minio.presigned_put_object(
-            bucket_name=settings.MINIO_BUCKET,
+        upload_url = self.s3.presigned_put_object(
+            bucket_name=settings.S3_BUCKET,
             object_name=object_name,
             expires=timedelta(minutes=30),
         )

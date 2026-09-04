@@ -14,7 +14,7 @@ from xlsxwriter import Workbook
 from src.domain.demo.generator import generar_ventas
 from src.domain.pipeline.bronze import HOJA_FACTURAS, HOJA_ITEMS
 from src.infrastructure.db.catalog.snapshot import load_catalog_snapshot
-from src.infrastructure.storage.minio_client import (
+from src.infrastructure.storage.s3_client import (
     get_presigned_download_url,
     put_object_bytes,
 )

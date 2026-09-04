@@ -6,7 +6,7 @@ en Polars. Pensado para `gold`, que puede tener decenas de miles de filas
 
 Nota: la extensión `delta` de DuckDB NO respeta las variables legacy
 `SET s3_endpoint=...` - intenta resolver credenciales vía IMDS/metadata
-service si no hay un Secret configurado, y eso truena contra MinIO local
+service si no hay un Secret configurado, y eso truena contra MinIO/R2
 (no hay IMDS). Hay que usar `CREATE SECRET` (mecanismo actual de DuckDB).
 """
 
@@ -19,15 +19,16 @@ def _connection() -> duckdb.DuckDBPyConnection:
     con = duckdb.connect(":memory:")
     con.execute("INSTALL delta")
     con.execute("LOAD delta")
+    use_ssl = "true" if settings.S3_SECURE else "false"
     con.execute(
         f"""
         CREATE SECRET (
             TYPE s3,
-            KEY_ID '{settings.MINIO_ACCESS_KEY}',
-            SECRET '{settings.MINIO_SECRET_KEY}',
-            REGION 'us-east-1',
-            ENDPOINT '{settings.MINIO_ENDPOINT}',
-            USE_SSL false,
+            KEY_ID '{settings.S3_ACCESS_KEY}',
+            SECRET '{settings.S3_SECRET_KEY}',
+            REGION '{settings.S3_REGION}',
+            ENDPOINT '{settings.S3_ENDPOINT}',
+            USE_SSL {use_ssl},
             URL_STYLE 'path'
         )
         """
@@ -36,7 +37,7 @@ def _connection() -> duckdb.DuckDBPyConnection:
 
 
 def _delta_uri(object_key: str) -> str:
-    return f"s3://{settings.MINIO_BUCKET}/{object_key}"
+    return f"s3://{settings.S3_BUCKET}/{object_key}"
 
 
 _FILTER_COLUMNS = ("severidad", "regla", "sede_codigo", "paso", "numero_factura")

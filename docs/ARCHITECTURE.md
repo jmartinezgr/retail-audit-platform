@@ -132,7 +132,7 @@ en memoria, nunca leyendo/escribiendo directo a storage.
 `BytesIO`) — no toca red ni disco, así que cuenta como puro/testeable aunque
 técnicamente "parsear" no sea una operación trivial. Lo que **no** entra a
 `domain/pipeline/` es leer esos bytes de MinIO o escribir el resultado a
-Delta — eso lo hace `infrastructure/storage/` (`minio_client.get_object_bytes`,
+Delta — eso lo hace `infrastructure/storage/` (`s3_client.get_object_bytes`,
 `lake.write_delta`), y quien los conecta es el `service.py` de
 `api/audits/`.
 
@@ -151,11 +151,11 @@ Implementaciones concretas, sin lógica de negocio.
   a todas las categorías, mismo patrón que `sede_codigo` nulo = global),
   `TransferenciaModel`, `CompradorModel` (`codigo`, `nombre` — catálogo
   simple, sin FK) con `ForeignKey` reales entre sí).
-- `storage/minio_client.py` — cliente de MinIO/S3 (`get_minio_client`,
+- `storage/s3_client.py` — cliente de MinIO/S3 (`get_s3_client`,
   `get_object_bytes`, `put_object_bytes` para subir bytes directo
   server-side sin URL prefirmada, `get_presigned_download_url` para
   dar una URL de descarga temporal — usados por `api/demo/`). `secure`
-  del cliente `Minio` viene de `settings.MINIO_SECURE`, no hardcodeado.
+  del cliente `Minio` viene de `settings.S3_SECURE`, no hardcodeado.
 - `storage/lake.py` — `write_delta()` / `read_delta()`: Polars + `deltalake`
   contra el bucket S3-compatible. `storage_options` incluye
   `AWS_ALLOW_HTTP` y `AWS_S3_ALLOW_UNSAFE_RENAME` porque MinIO (y S3
@@ -163,16 +163,16 @@ Implementaciones concretas, sin lógica de negocio.
   `delta-rs` asume por defecto en S3 real — como el pipeline es de un solo
   escritor por job, no hace falta ese locking.
   **Local vs. R2, mismo código**: no hay un adapter por proveedor — ambos
-  módulos leen `Settings.MINIO_ENDPOINT/ACCESS_KEY/SECRET_KEY/BUCKET`
+  módulos leen `Settings.S3_ENDPOINT/ACCESS_KEY/SECRET_KEY/BUCKET`
   (`infrastructure/config/settings.py`), más dos flags nuevos que
-  distinguen el entorno: `MINIO_SECURE: bool` (esquema HTTP/HTTPS —
-  MinIO local es HTTP, R2 es HTTPS-only) y `MINIO_REGION: str` (MinIO no
+  distinguen el entorno: `S3_SECURE: bool` (esquema HTTP/HTTPS —
+  MinIO local es HTTP, R2 es HTTPS-only) y `S3_REGION: str` (MinIO no
   lo usa, R2 exige literalmente `"auto"`). Cambiar de MinIO a R2 en prod
   es solo cambiar variables de entorno, cero código nuevo — verificado
   2026-09-04 corriendo `lake.write_delta/read_delta` y
-  `minio_client.put_object_bytes/get_object_bytes/get_presigned_download_url`
+  `s3_client.put_object_bytes/get_object_bytes/get_presigned_download_url`
   de verdad (no un script aparte) contra un bucket R2 real con
-  `MINIO_SECURE=true`, `MINIO_REGION=auto`.
+  `S3_SECURE=true`, `S3_REGION=auto`.
 - `db/catalog/snapshot.py` — `load_catalog_snapshot(db) -> CatalogosSnapshot`:
   convierte los catálogos de Postgres (vía `CatalogRepository`) a
   `pl.DataFrame` — el único lugar donde SQLAlchemy y `domain/rules`
@@ -714,14 +714,27 @@ React y no puede llamar a `useI18n()`.
   en la columna `regla` de gold, no por una lista fija de 18 nombres,
   así que no necesitaron cambios de código para soportar reglas nuevas.
   Suite de tests: 97 (antes 87), nuevo `tests/domain/rules/test_dynamic.py`.
-- **2026-09-04**: verificado que `deltalake`/Polars y el SDK `minio`
-  funcionan contra Cloudflare R2 sin cambiar de adapter (ver
-  `storage/lake.py`/`storage/minio_client.py` arriba) — corriendo el
-  código real de la app contra un bucket R2 de prueba, no un script
-  aparte. Bug real encontrado: `minio_client.py` tenía `secure=False`
-  hardcodeado y `lake.py` armaba el endpoint siempre con `http://` —
-  ambos asumían HTTP, y R2 es HTTPS-only. Corregido con dos settings
-  nuevos en `Settings` (`MINIO_SECURE: bool = False`,
-  `MINIO_REGION: str = "us-east-1"`, ambos con default = comportamiento
-  local actual) — en prod contra R2 basta con `MINIO_SECURE=true` +
-  `MINIO_REGION=auto`, sin tocar código.
+- **2026-09-04**: verificado que `deltalake`/Polars, el SDK `minio` y la
+  extensión `delta` de DuckDB funcionan contra Cloudflare R2 sin cambiar
+  de adapter (ver `storage/lake.py`/`storage/s3_client.py`/
+  `storage/duckdb_query.py` arriba) — corriendo el código real de la app
+  contra un bucket R2 de prueba, no un script aparte. Dos bugs reales
+  encontrados, mismo patrón en tres sitios: `s3_client.py` tenía
+  `secure=False` hardcodeado, `lake.py` armaba el endpoint siempre con
+  `http://`, y `duckdb_query.py` armaba su `CREATE SECRET` con
+  `USE_SSL false` y `REGION 'us-east-1'` fijos — los tres asumían HTTP,
+  y R2 es HTTPS-only y exige region `"auto"`. Corregido con dos settings
+  nuevos en `Settings` (`S3_SECURE: bool = False`,
+  `S3_REGION: str = "us-east-1"`, ambos con default = comportamiento
+  local actual) que ahora leen los tres módulos — en prod contra R2
+  basta con `S3_SECURE=true` + `S3_REGION=auto`, sin tocar código.
+- **2026-09-04**: renombrado `MINIO_*` → `S3_*` en `Settings` y en
+  `.env`/`.env.example` (`S3_ENDPOINT/ACCESS_KEY/SECRET_KEY/BUCKET/
+  SECURE/REGION`) — el nombre `MINIO_*` confundía apenas el mismo código
+  también apunta a R2 en prod. `infrastructure/storage/minio_client.py`
+  se renombró a `s3_client.py` (`get_minio_client()` → `get_s3_client()`)
+  por la misma razón; se mantiene el import `from minio import Minio`
+  porque esa sí es la librería real que se usa (el nombre del paquete,
+  no cambia). `docker-compose.yml` NO se tocó — el contenedor local
+  sigue siendo MinIO de verdad (`MINIO_ROOT_USER`/`MINIO_ROOT_PASSWORD`
+  son variables propias de esa imagen, no de esta app).
