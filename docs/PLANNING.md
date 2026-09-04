@@ -435,8 +435,14 @@ Script Python (Faker + numpy) que:
 - **Storage**: Cloudflare R2 (10GB gratis, API compatible con S3/MinIO — el
   mismo cliente `boto3`/`minio` sirve local y en prod, solo cambia el
   endpoint; `deltalake`/Polars también apuntan a R2 vía `storage_options`
-  S3-compatible, solo hay que probar que las escrituras Delta funcionen ahí
-  antes de confiar en el plan — es la pieza menos probada de todas).
+  S3-compatible). **Verificado (2026-09-04)**: escritura + lectura de una
+  tabla Delta real contra un bucket R2 de prueba, confirmando `_delta_log/`
+  con un commit `WRITE` genuino (`delta-rs:py-1.6.3`, misma versión que
+  `requirements.txt`) — mismo `storage_options` que usa
+  `infrastructure/storage/lake.py` para MinIO, solo cambiando
+  `AWS_ENDPOINT_URL` al endpoint de R2, `AWS_REGION` a `"auto"` (en vez de
+  `"us-east-1"`) y `AWS_ALLOW_HTTP` a `"false"` (R2 es HTTPS-only, MinIO
+  local es HTTP). Ya no es la pieza menos probada del plan de deploy.
 - **Fallback si el cold-start del free tier arruina la primera impresión**:
   VPS barato (DigitalOcean/Hetzner ~$5/mes) corriendo el `docker-compose.yml`
   que ya existe casi tal cual — reusa toda la infra que ya armaste, sin
@@ -460,9 +466,6 @@ Script Python (Faker + numpy) que:
 
 ## 11. Abierto / por decidir más adelante
 
-- Confirmar que `deltalake` escribe/lee sin problemas contra Cloudflare R2
-  (S3-compatible) antes de comprometerse con esa ruta de deploy — probar
-  temprano, no dejarlo para el final.
 - `item_duplicado_en_factura` y `cantidad_dentro_de_transferencias` tienen
   alcance limitado a propósito (ver §4) — revisar si vale la pena
   profundizarlas antes del deploy final, o dejarlas así y ser explícito
