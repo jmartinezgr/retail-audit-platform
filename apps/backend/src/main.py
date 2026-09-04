@@ -28,3 +28,10 @@ app.include_router(uploads_router)
 app.include_router(audits_router)
 app.include_router(demo_router)
 app.include_router(rules_router)
+
+
+@app.get("/healthz")
+def healthz():
+    """Health check para el hosting (ej. Render) - sin tocar DB/storage,
+    solo confirma que el proceso está vivo y respondiendo."""
+    return {"status": "ok"}
