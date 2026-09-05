@@ -20,9 +20,11 @@ import type {
 } from "@/types/api"
 import { getSessionId } from "@/lib/session"
 
-// El dev server de Vite reenvía /api -> el backend (ver vite.config.ts).
-// En prod, esto se vuelve la URL real del backend desplegado.
-const API_BASE = "/api"
+// Dev: el dev server de Vite reenvía /api -> el backend (ver vite.config.ts),
+// no hace falta VITE_API_BASE_URL. Prod (Vercel): frontend y backend viven en
+// dominios distintos, así que VITE_API_BASE_URL apunta directo al backend
+// desplegado (ej. https://auditlake-backend.onrender.com).
+const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "/api"
 
 class ApiError extends Error {
   status: number

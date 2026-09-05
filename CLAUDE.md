@@ -19,19 +19,18 @@ Todos son documentos vivos: si tomas o cambias una decisión relevante de
 producto, estructura, o esquema de datos, actualízalos en el mismo turno,
 no lo dejes para después.
 
-## Estado local sin commitear (a propósito)
+## CORS
 
-`apps/backend/src/main.py` tiene un `CORSMiddleware(allow_origins=["*"])`
-agregado a mano, **sin commitear**, para un visor HTML provisional
-(`viewer.html`, vive fuera del repo en un scratchpad, no en el proyecto)
-que navega uploads/bronze/silver/gold desde el navegador. Es intencional:
-- No commitear tal cual (`allow_origins=["*"]` no debe llegar a producción).
-- No "limpiarlo" automáticamente tampoco — el usuario lo pidió dejar así
-  para seguir usando el visor. Si algún día se commitea CORS de verdad
-  (para el frontend real de la fase 6), hay que acotar `allow_origins` al
-  dominio real, no dejarlo abierto.
-- Si `git status` muestra `main.py` modificado sin que nadie lo haya
-  tocado en la sesión actual, es por esto — no es un cambio perdido.
+`main.py` arma `allow_origins` desde `settings.cors_origins_list`
+(`CORS_ORIGINS` en `.env`, coma-separado). Default = solo
+`http://localhost:5173` (dev de Vite, aunque normalmente ni hace falta —
+el dev server ya proxea `/api` mismo-origen, ver `vite.config.ts`). En
+prod (Render), `CORS_ORIGINS` se pone al dominio real del frontend en
+Vercel. El `.env` local del usuario tiene `CORS_ORIGINS=*` (sin commitear,
+es su override personal) para poder seguir usando un visor HTML
+provisional (`viewer.html`, fuera del repo, en un scratchpad) que le pega
+directo al backend sin pasar por el proxy de Vite — no cambiar ese default
+del código a `*`, es solo su `.env` local.
 
 ## Stack
 

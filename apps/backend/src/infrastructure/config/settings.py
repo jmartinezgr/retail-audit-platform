@@ -18,7 +18,17 @@ class Settings(BaseSettings):
     S3_SECURE: bool = False
     S3_REGION: str = "us-east-1"
 
+    # Dominios permitidos por CORS, separados por coma. Default = solo el
+    # dev server de Vite (no debería hacer falta en dev real: el proxy de
+    # Vite ya sirve /api mismo-origen, pero cubre el caso de pegarle
+    # directo al backend). En prod: la URL real del frontend en Vercel.
+    CORS_ORIGINS: str = "http://localhost:5173"
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+
+    @property
+    def cors_origins_list(self) -> list[str]:
+        return [origin.strip() for origin in self.CORS_ORIGINS.split(",") if origin.strip()]
 
 
 settings = Settings()

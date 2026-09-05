@@ -738,3 +738,21 @@ React y no puede llamar a `useI18n()`.
   no cambia). `docker-compose.yml` NO se tocó — el contenedor local
   sigue siendo MinIO de verdad (`MINIO_ROOT_USER`/`MINIO_ROOT_PASSWORD`
   son variables propias de esa imagen, no de esta app).
+- **2026-09-05**: backend verificado en vivo en Render
+  (`https://auditlake-backend.onrender.com`) — `/healthz`, conectividad
+  Neon (`/uploads/`, `/rules/fields`) y conectividad R2
+  (`/demo/generate-excel`, URL prefirmada descargada de verdad) todos
+  200 desde el deploy real, no local.
+- **2026-09-05**: preparado el backend/frontend para desplegar el
+  frontend en Vercel. `main.py` reemplaza el `CORSMiddleware(allow_
+  origins=["*"])` hardcodeado por `settings.cors_origins_list` (nuevo
+  campo `CORS_ORIGINS` en `Settings`, coma-separado, default
+  `http://localhost:5173`) — en Render se pondrá al dominio real de
+  Vercel una vez exista; localmente el `.env` (sin commitear) del
+  usuario tiene `CORS_ORIGINS=*` para no romper el visor HTML
+  provisional que le pega directo al backend (ver `CLAUDE.md`).
+  `apps/frontend/src/lib/api.ts` arma `API_BASE` desde
+  `VITE_API_BASE_URL` si está definida (build de prod, sin el proxy de
+  Vite disponible porque frontend y backend viven en dominios
+  distintos), o cae a `/api` (dev local). Nuevo
+  `apps/frontend/.env.example` documentando la variable.

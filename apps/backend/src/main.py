@@ -1,4 +1,6 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from src.infrastructure.config.settings import settings
 from src.infrastructure.db.base import Base
 from src.infrastructure.db.session import engine
 
@@ -19,6 +21,13 @@ from src.api.demo.router import router as demo_router
 from src.api.rules.router import router as rules_router
 
 app = FastAPI(title="Retail Audit Platform - Backend")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origins_list,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Crear tablas en BD
 Base.metadata.create_all(bind=engine)

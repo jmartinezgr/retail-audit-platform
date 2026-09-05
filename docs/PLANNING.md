@@ -463,6 +463,27 @@ Script Python (Faker + numpy) que:
   VPS barato (DigitalOcean/Hetzner ~$5/mes) corriendo el `docker-compose.yml`
   que ya existe casi tal cual — reusa toda la infra que ya armaste, sin
   cold starts, y justifica el gasto si de verdad ayuda a conseguir trabajo.
+- **Backend en Render, verificado en vivo (2026-09-05)**: desplegado en
+  `https://auditlake-backend.onrender.com` (Root Directory `apps/backend`,
+  Build Filters acotados a `apps/backend/**`, Health Check Path `/healthz`,
+  env vars = Neon + R2 de prueba). Confirmado contra el deploy real (no
+  local): `/healthz` → 200, `/uploads/` y `/rules/fields` responden con los
+  12 catálogos sembrados (conectividad Neon en prod), `/demo/generate-excel`
+  sube a R2 y devuelve una URL prefirmada real (descargada y confirmada, 8.7
+  KB) — conectividad R2 en prod. Un par de 404 transitorios con header
+  `x-render-routing: no-server` en el primer intento de cada endpoint,
+  resueltos al reintentar — consistente con cold-start del free tier justo
+  después del deploy, no un bug de código.
+- **CORS y `API_BASE`, listos para Vercel (2026-09-05)**: `main.py` ya no
+  trae `allow_origins=["*"]` hardcodeado — ahora lee `settings.
+  cors_origins_list` (`CORS_ORIGINS` en env, coma-separado; default
+  `http://localhost:5173`). En Render, `CORS_ORIGINS` se pondrá al dominio
+  real de Vercel una vez exista. El frontend (`lib/api.ts`) ahora arma
+  `API_BASE` desde `VITE_API_BASE_URL` si está definida (build de prod en
+  Vercel, sin proxy de Vite disponible), o cae a `/api` (dev local, vía el
+  proxy de `vite.config.ts`) — verificado con un build real (`VITE_API_
+  BASE_URL=https://auditlake-backend.onrender.com npm run build`), la URL
+  queda embebida en el bundle.
 
 ## 10. Fases sugeridas
 
