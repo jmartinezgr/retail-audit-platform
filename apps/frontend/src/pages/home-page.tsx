@@ -80,30 +80,26 @@ export function HomePage() {
             <CardDescription>{t("home.generateDesc")}</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="facturas">{t("home.rowsLabel")}</Label>
-                <Input
-                  id="facturas"
-                  type="number"
-                  min={1}
-                  max={50000}
-                  value={facturas}
-                  onChange={(e) => setFacturas(Number(e.target.value))}
-                />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="errorRate">{t("home.errorRateLabel")}</Label>
-                <Input
-                  id="errorRate"
-                  type="number"
-                  min={0}
-                  max={1}
-                  step={0.05}
-                  value={errorRate}
-                  onChange={(e) => setErrorRate(Number(e.target.value))}
-                />
-              </div>
+            <div className="grid grid-cols-2 items-end gap-x-3 gap-y-1.5">
+              <Label htmlFor="facturas">{t("home.rowsLabel")}</Label>
+              <Label htmlFor="errorRate">{t("home.errorRateLabel")}</Label>
+              <Input
+                id="facturas"
+                type="number"
+                min={1}
+                max={50000}
+                value={facturas}
+                onChange={(e) => setFacturas(Number(e.target.value))}
+              />
+              <Input
+                id="errorRate"
+                type="number"
+                min={0}
+                max={1}
+                step={0.05}
+                value={errorRate}
+                onChange={(e) => setErrorRate(Number(e.target.value))}
+              />
             </div>
             <Button onClick={handleGenerate} disabled={generating}>
               {generating ? <Loader2 className="animate-spin" /> : <Wand2 />}

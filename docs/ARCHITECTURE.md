@@ -756,6 +756,24 @@ React y no puede llamar a `useI18n()`.
   Vite disponible porque frontend y backend viven en dominios
   distintos), o cae a `/api` (dev local). Nuevo
   `apps/frontend/.env.example` documentando la variable.
+- **2026-09-07**: dos ajustes más de mobile, reportados por el usuario
+  probando en su propio celular: `home-page.tsx`'s grid de "Invoices"/
+  "Error rate" tenía cada label+input en su propio `flex-col` dentro de
+  las dos columnas del grid — si un label se envuelve a 2 líneas y el
+  otro no, los inputs quedaban desalineados (cada `flex-col` alinea su
+  contenido independiente del otro). Ahora ambos labels van en la
+  primera fila del grid (con `items-end` para que se alineen abajo sin
+  importar cuántas líneas ocupen) y ambos inputs en la segunda — mismo
+  patrón que evita el problema de raíz. `layout.tsx` — el header con
+  "Rules"/"About the project" inline se veía apeñuscado en mobile; ahora
+  esos dos links se ocultan (`hidden sm:flex`) detrás de un botón
+  hamburguesa (`sm:hidden`) que despliega un panel con blur
+  (`backdrop-blur` + overlay `fixed inset-0` para cerrar al tocar
+  afuera) — sin agregar Radix DropdownMenu, mismo criterio del proyecto
+  de no sumar una dependencia nueva para una interacción simple. El
+  botón de toggle necesitó `relative z-50` explícito: sin eso, el overlay
+  `fixed` (para cerrar al tocar afuera) tapaba el propio botón y no se
+  podía volver a cerrar tocándolo.
 - **2026-09-07**: `main.py` registra `@app.exception_handler(duckdb.
   IOException)` — traduce "No files in log segment" (consultar una capa
   bronze/silver/gold que aún no existe) a un 404 con `detail` claro, en
