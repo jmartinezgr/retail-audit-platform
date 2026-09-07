@@ -185,12 +185,12 @@ export function JobDetailPage() {
         <ArrowLeft className="size-3.5" /> {t("layout.back")}
       </Link>
 
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold">{statusQuery.data?.filename ?? uploadId}</h1>
-          <p className="text-muted-foreground font-mono text-xs">{uploadId}</p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-xl font-semibold break-words">{statusQuery.data?.filename ?? uploadId}</h1>
+          <p className="text-muted-foreground font-mono text-xs break-all">{uploadId}</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           {statusQuery.data && <StatusBadge status={statusQuery.data.status} />}
           {statusQuery.data && !["REQUESTED", "UPLOADED"].includes(statusQuery.data.status) && (
             <Button

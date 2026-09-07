@@ -756,6 +756,17 @@ React y no puede llamar a `useI18n()`.
   Vite disponible porque frontend y backend viven en dominios
   distintos), o cae a `/api` (dev local). Nuevo
   `apps/frontend/.env.example` documentando la variable.
+- **2026-09-07**: dos bugs de responsive encontrados probando la app en
+  viewport mobile (375px) real, no solo redimensionando el navegador:
+  `job-detail-page.tsx` — el header (nombre del archivo + badge + botones
+  "Re-run gold"/"Process") era `flex items-center justify-between` sin
+  wrap, así que en mobile el botón "Process" quedaba fuera del viewport
+  (existía en el DOM, pero solo alcanzable con scroll horizontal) — ahora
+  es `flex-wrap`, con `min-w-0`/`break-words` en el bloque del título para
+  que el nombre de archivo largo no fuerce el overflow. `dashboard.tsx`'s
+  `RuleRankingRow` — el nombre de la regla tenía `w-64` fijo (256px), que
+  en 375px de viewport no dejaba espacio para la barra ni el conteo
+  (ambos quedaban invisibles/cortados) — ahora es `w-28 sm:w-64`.
 - **2026-09-07**: `lib/api.ts`'s `request()` ya no propaga texto crudo de error
   (JSON sin parsear, "HTTP 405", etc.) a los toasts — usa el `detail` de
   FastAPI cuando existe, o un mensaje genérico. También reintenta

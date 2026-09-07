@@ -56,7 +56,7 @@ function RuleRankingRow({ rule, max }: { rule: RuleFailureBreakdown; max: number
   const pct = max > 0 ? Math.round((rule.facturas_afectadas / max) * 100) : 0
   return (
     <div className="flex items-center gap-3 py-1.5">
-      <span className="w-64 shrink-0 truncate font-mono text-xs" title={rule.regla}>
+      <span className="w-28 shrink-0 truncate font-mono text-xs sm:w-64" title={rule.regla}>
         {rule.regla}
       </span>
       <div className="bg-muted h-2 flex-1 overflow-hidden rounded-full">
