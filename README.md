@@ -4,6 +4,8 @@
 
 AuditLake ingests multi-item sales invoices for a fictional retail chain, runs them through a medallion pipeline, and produces an explainable audit trail: which rule was evaluated, against which invoice or line item, did it pass, and why. It's a portfolio project — the domain is invented, but the pipeline shape, the rule engine, and the kind of bugs it surfaces are modeled on real high-volume transactional-data auditing work.
 
+**[Try it live →](https://auditlake.jmartinezgr.com)** (backend on a free tier — the first request after a while can take up to ~30s to wake up)
+
 ![Landing page](docs/screenshots/landing.png)
 
 ## Why this exists
@@ -39,6 +41,7 @@ On top of those 18, the `/app/rules` screen lets you define your own — a thres
 | **Summary matrix** — one row per invoice, one column per rule, worst case across items | ![Gold summary matrix](docs/screenshots/gold-matrix.png) |
 | **Invoice detail** — header reconciliation, per-rule results, expandable line items | ![Invoice detail](docs/screenshots/invoice-detail.png) |
 | **App home** — generate synthetic data or upload an Excel, recent uploads | ![App home](docs/screenshots/home.png) |
+| **Dynamic rules** — define a threshold or store-exclusion rule from the UI, no code | ![Dynamic rules](docs/screenshots/rules.png) |
 
 ## Architecture
 
@@ -77,7 +80,7 @@ For the full reasoning behind every structural decision (why DuckDB over loading
 | **Data layer** | Delta Lake tables on MinIO (local) / Cloudflare R2 (prod) |
 | **Operational DB** | PostgreSQL (job state, master catalogs) |
 | **Frontend** | React 19, Vite, TypeScript, Tailwind CSS v4, shadcn/ui (Radix), TanStack Query, React Router |
-| **Testing** | pytest (87 tests over the pure-domain layer — pipeline, rule engine, synthetic generator) |
+| **Testing** | pytest (97 tests over the pure-domain layer — pipeline, static + dynamic rule engine, synthetic generator) |
 | **Synthetic data** | Faker-seeded catalogs + a custom invoice generator that injects specific rule violations on demand |
 
 No NestJS, no Spark — see `docs/PLANNING.md`/`docs/ARCHITECTURE.md` for why those were deliberately left out.
@@ -134,8 +137,8 @@ docs/
 docker-compose.yml     # local Postgres + MinIO
 ```
 
-## Roadmap
+## Deployment
 
-- **Deploy** — free-tier first (Vercel + Render/Fly.io + Neon + Cloudflare R2), with a ~$5/mo VPS fallback if cold starts hurt the demo experience.
+Frontend on Vercel, backend on Render, Postgres on Neon, storage on Cloudflare R2 — all free tier. The backend sleeps after inactivity, so the first request after a while can take up to ~30s; the app absorbs that with retries and a loading hint instead of surfacing an error.
 
 Full phase-by-phase history and what's explicitly out of scope (and why) in [`docs/PLANNING.md`](docs/PLANNING.md).

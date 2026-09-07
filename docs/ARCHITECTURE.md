@@ -756,6 +756,16 @@ React y no puede llamar a `useI18n()`.
   Vite disponible porque frontend y backend viven en dominios
   distintos), o cae a `/api` (dev local). Nuevo
   `apps/frontend/.env.example` documentando la variable.
+- **2026-09-07**: `lib/api.ts`'s `request()` ya no propaga texto crudo de error
+  (JSON sin parsear, "HTTP 405", etc.) a los toasts — usa el `detail` de
+  FastAPI cuando existe, o un mensaje genérico. También reintenta
+  automáticamente los `GET` (no las mutaciones, para no disparar un
+  pipeline dos veces) ante un 5xx o un fallo de red, con backoff corto —
+  esto absorbe en silencio la contención transitoria del free tier de
+  Render documentada en `PLANNING.md` §9, que hasta ahora se veía como un
+  error de CORS falso en el navegador. `home-page.tsx` también gana un
+  hint visible ("puede tardar ~30s la primera vez") mientras genera/sube,
+  para el cold-start real del free tier.
 - **2026-09-07**: frontend desplegado en Vercel
   (`https://retail-audit-platform-fawn.vercel.app`) y verificado en
   navegador real de punta a punta (ver `PLANNING.md` §9 para el detalle

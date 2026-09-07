@@ -498,19 +498,17 @@ Script Python (Faker + numpy) que:
      mecanismo aparte del CORS de FastAPI. Se configuró una CORS Policy en
      el bucket (dashboard de Cloudflare) permitiendo `GET/PUT/HEAD` desde
      el dominio de Vercel y `localhost:5173`.
-  - **Limitación conocida, no arreglada a propósito**: mientras el pipeline
-    (bronze→silver→gold) procesa en background (`BackgroundTasks`, síncrono,
-    Polars), el único worker del free tier de Render queda ocupado el
-    tiempo suficiente para que un par de requests de polling concurrentes
-    (`/silver`, `/dashboard`) fallen en el navegador con un error que
-    *parece* de CORS (en realidad es la conexión cayéndose por contención
-    de CPU/GIL, no falta de header) — se auto-resuelve solo en segundos
-    cuando termina el procesamiento (confirmado: el job igual quedó
-    `COMPLETED` con datos correctos, y un refresh de la página ya no
-    muestra el error). Para una demo en vivo en entrevista: usar datasets
-    modestos (cientos de facturas, no 50,000) para que esa ventana sea
-    imperceptible, o simplemente mencionarlo si aparece — es una
-    limitación del free tier de un solo worker, no un bug de la app.
+  - **Limitación del free tier, mitigada (2026-09-07)**: mientras el
+    pipeline (bronze→silver→gold) procesa en background (`BackgroundTasks`,
+    síncrono, Polars) o tras un rato inactivo (cold start), el único
+    worker de Render puede tardar o resetear una conexión concurrente,
+    lo que el navegador reporta como un falso error de CORS. `lib/api.ts`
+    ahora reintenta automáticamente los `GET` (2 intentos, backoff corto)
+    ante esto, así que en la mayoría de los casos ya ni se nota — se
+    sigue viendo un mensaje "aún no está listo" un poco más largo en vez
+    de un error. Para una demo en vivo: usar datasets modestos (cientos
+    de facturas, no 50,000) sigue ayudando a que la ventana de contención
+    sea mínima.
 - **CORS y `API_BASE`, listos para Vercel (2026-09-05)**: `main.py` ya no
   trae `allow_origins=["*"]` hardcodeado — ahora lee `settings.
   cors_origins_list` (`CORS_ORIGINS` en env, coma-separado; default

@@ -109,6 +109,7 @@ export function HomePage() {
               {generating ? <Loader2 className="animate-spin" /> : <Wand2 />}
               {t("home.generateButton")}
             </Button>
+            {generating && <p className="text-muted-foreground text-xs">{t("home.slowHint")}</p>}
           </CardContent>
         </Card>
 
@@ -129,6 +130,7 @@ export function HomePage() {
               {uploading ? <Loader2 className="animate-spin" /> : <Upload />}
               {t("home.uploadButton")}
             </Button>
+            {uploading && <p className="text-muted-foreground text-xs">{t("home.slowHint")}</p>}
           </CardContent>
         </Card>
       </div>

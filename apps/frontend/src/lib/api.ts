@@ -36,19 +36,62 @@ class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
-    headers: {
-      ...(init?.body ? { "Content-Type": "application/json" } : {}),
-      "X-Client-Id": getSessionId(),
-    },
-    ...init,
-  })
-  if (!res.ok) {
-    const text = await res.text().catch(() => "")
-    throw new ApiError(res.status, text || `HTTP ${res.status}`)
+const GENERIC_ERROR_MESSAGE = "Something went wrong. Please try again."
+const CONNECTION_ERROR_MESSAGE = "Couldn't reach the server. Please try again in a moment."
+
+/** FastAPI's default error shape is {"detail": "..."} - use that if present,
+ * it's usually already a readable sentence. Otherwise fall back to something
+ * generic instead of surfacing raw status text/HTML to the user. */
+async function readableErrorMessage(res: Response): Promise<string> {
+  try {
+    const data = await res.json()
+    if (typeof data?.detail === "string" && data.detail.trim()) return data.detail
+  } catch {
+    // not JSON - ignore, fall through to generic message
   }
-  return res.json() as Promise<T>
+  return GENERIC_ERROR_MESSAGE
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+/** El free tier de Render a veces resetea una conexión concurrente mientras
+ * el worker está ocupado procesando el pipeline (ver docs/PLANNING.md §9) -
+ * eso se ve como un fallo de red o un 5xx, no como un error real. Solo
+ * reintentamos GETs (idempotentes) para no disparar dos veces una mutación
+ * (ej. correr el pipeline por duplicado). */
+async function request<T>(path: string, init?: RequestInit, retries = 2): Promise<T> {
+  const method = init?.method?.toUpperCase() ?? "GET"
+  const canRetry = method === "GET"
+
+  for (let attempt = 0; ; attempt++) {
+    let res: Response
+    try {
+      res = await fetch(`${API_BASE}${path}`, {
+        headers: {
+          ...(init?.body ? { "Content-Type": "application/json" } : {}),
+          "X-Client-Id": getSessionId(),
+        },
+        ...init,
+      })
+    } catch {
+      if (canRetry && attempt < retries) {
+        await sleep(500 * (attempt + 1))
+        continue
+      }
+      throw new ApiError(0, CONNECTION_ERROR_MESSAGE)
+    }
+
+    if (!res.ok) {
+      if (canRetry && res.status >= 500 && attempt < retries) {
+        await sleep(500 * (attempt + 1))
+        continue
+      }
+      throw new ApiError(res.status, await readableErrorMessage(res))
+    }
+    return res.json() as Promise<T>
+  }
 }
 
 export const api = {
