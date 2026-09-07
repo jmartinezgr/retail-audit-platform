@@ -756,3 +756,11 @@ React y no puede llamar a `useI18n()`.
   Vite disponible porque frontend y backend viven en dominios
   distintos), o cae a `/api` (dev local). Nuevo
   `apps/frontend/.env.example` documentando la variable.
+- **2026-09-07**: frontend desplegado en Vercel
+  (`https://retail-audit-platform-fawn.vercel.app`) y verificado en
+  navegador real de punta a punta (ver `PLANNING.md` §9 para el detalle
+  de los tres bugs encontrados: CORS del backend que nunca se había
+  commiteado, rutas del SPA rotas en carga directa — nuevo
+  `apps/frontend/vercel.json` con `rewrites` a `index.html` — y CORS a
+  nivel de bucket R2, aparte del CORS de FastAPI, configurado en el
+  dashboard de Cloudflare).

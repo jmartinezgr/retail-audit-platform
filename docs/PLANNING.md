@@ -474,6 +474,43 @@ Script Python (Faker + numpy) que:
   `x-render-routing: no-server` en el primer intento de cada endpoint,
   resueltos al reintentar — consistente con cold-start del free tier justo
   después del deploy, no un bug de código.
+- **Frontend en Vercel, verificado en vivo (2026-09-07)**: desplegado en
+  `https://retail-audit-platform-fawn.vercel.app` (Root Directory
+  `apps/frontend`, env var `VITE_API_BASE_URL` apuntando al backend de
+  Render). Flujo completo probado en navegador real (Playwright contra la
+  URL pública, no local): generar 100 facturas sintéticas → subir → Process
+  (bronze→silver→gold) → dashboard con las cifras correctas (92% válidas,
+  desglose de violaciones) → tab Gold → `/app/rules`. Tres problemas reales
+  encontrados y corregidos en el camino, ninguno visible probando solo con
+  `curl` (no aplica CORS ni enruta como un navegador):
+  1. **CORS del backend nunca estaba commiteado**: el `allow_origins=["*"]`
+     de `main.py` vivía solo local (ver `CLAUDE.md`), así que el deploy de
+     Render no tenía CORS en absoluto. Se commiteó de verdad, ahora lee
+     `settings.cors_origins_list` (`CORS_ORIGINS` en env, coma-separado) —
+     en Render apunta al dominio de Vercel.
+  2. **Rutas del SPA rompían en carga directa/refresh**: Vercel sirve
+     estáticos y no sabe redirigir `/app`, `/app/rules`, etc. a
+     `index.html` — cualquier bookmark o F5 daba 404. Corregido con
+     `apps/frontend/vercel.json` (`rewrites` a `/index.html` para todo).
+  3. **CORS a nivel de bucket R2**: el flujo de generar datos demo hace que
+     el *navegador* (no el backend) baje el excel directo desde una URL
+     prefirmada de `r2.cloudflarestorage.com` — eso es CORS del bucket, un
+     mecanismo aparte del CORS de FastAPI. Se configuró una CORS Policy en
+     el bucket (dashboard de Cloudflare) permitiendo `GET/PUT/HEAD` desde
+     el dominio de Vercel y `localhost:5173`.
+  - **Limitación conocida, no arreglada a propósito**: mientras el pipeline
+    (bronze→silver→gold) procesa en background (`BackgroundTasks`, síncrono,
+    Polars), el único worker del free tier de Render queda ocupado el
+    tiempo suficiente para que un par de requests de polling concurrentes
+    (`/silver`, `/dashboard`) fallen en el navegador con un error que
+    *parece* de CORS (en realidad es la conexión cayéndose por contención
+    de CPU/GIL, no falta de header) — se auto-resuelve solo en segundos
+    cuando termina el procesamiento (confirmado: el job igual quedó
+    `COMPLETED` con datos correctos, y un refresh de la página ya no
+    muestra el error). Para una demo en vivo en entrevista: usar datasets
+    modestos (cientos de facturas, no 50,000) para que esa ventana sea
+    imperceptible, o simplemente mencionarlo si aparece — es una
+    limitación del free tier de un solo worker, no un bug de la app.
 - **CORS y `API_BASE`, listos para Vercel (2026-09-05)**: `main.py` ya no
   trae `allow_origins=["*"]` hardcodeado — ahora lee `settings.
   cors_origins_list` (`CORS_ORIGINS` en env, coma-separado; default
@@ -499,7 +536,10 @@ Script Python (Faker + numpy) que:
    original de la fase, incluyendo el rediseño a facturas multi-ítem (§3).
 7. ✅ Reglas dinámicas editables desde el frontend (`/app/rules`, DSL
    tabular propio, ver §4).
-8. Deploy en capas gratuitas, ajustar si hace falta el VPS de $5.
+8. ✅ Deploy en capas gratuitas (Render + Neon + R2 + Vercel), verificado
+   en vivo end-to-end en el navegador (ver §9). Queda abierto ajustar al
+   VPS de $5 solo si el cold-start/contención del free tier resulta ser
+   un problema real en una demo concreta.
 
 ## 11. Abierto / por decidir más adelante
 
@@ -508,3 +548,10 @@ Script Python (Faker + numpy) que:
   profundizarlas antes del deploy final, o dejarlas así y ser explícito
   sobre la limitación en la demo/README.
 - Nombre final del proyecto para el portafolio (ahora mismo: AuditLake).
+- Dominio: por ahora el link es el que da Vercel
+  (`retail-audit-platform-fawn.vercel.app`). Evaluando subdominio del
+  portafolio existente vs. dominio propio — ver conversación, sin decidir
+  todavía.
+- Bucket R2 de producción: hoy corre contra `auditlake-r2-test` (el mismo
+  usado para verificar R2 en §9) — decidir si vale la pena crear un
+  bucket separado antes de compartir el link ampliamente.
