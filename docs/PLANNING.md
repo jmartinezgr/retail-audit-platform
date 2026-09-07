@@ -521,6 +521,17 @@ Script Python (Faker + numpy) que:
   proxy de `vite.config.ts`) — verificado con un build real (`VITE_API_
   BASE_URL=https://auditlake-backend.onrender.com npm run build`), la URL
   queda embebida en el bundle.
+- **Dominio propio (2026-09-07)**: `jmartinezgr.com` comprado en Porkbun
+  ($11.08/año, at-cost, sin sorpresa en renovación), DNS administrado en
+  Cloudflare (nameservers `adi.ns.cloudflare.com` /
+  `donovan.ns.cloudflare.com`, reemplazando los de Porkbun). AuditLake
+  vive en `auditlake.jmartinezgr.com` — un `CNAME` a Vercel (`DNS only`,
+  no proxied — Vercel necesita resolver directo a su edge para su propio
+  SSL). Verificado en vivo: carga con SSL válido, sin 404 de rutas SPA, y
+  el backend en Render responde 200 sin CORS bloqueado (se agregó el
+  dominio nuevo a `CORS_ORIGINS`, junto al de Vercel). El portafolio
+  personal (fuera de este repo) queda pendiente de conectar a la raíz del
+  dominio.
 
 ## 10. Fases sugeridas
 
@@ -548,10 +559,9 @@ Script Python (Faker + numpy) que:
   profundizarlas antes del deploy final, o dejarlas así y ser explícito
   sobre la limitación en la demo/README.
 - Nombre final del proyecto para el portafolio (ahora mismo: AuditLake).
-- Dominio: por ahora el link es el que da Vercel
-  (`retail-audit-platform-fawn.vercel.app`). Evaluando subdominio del
-  portafolio existente vs. dominio propio — ver conversación, sin decidir
-  todavía.
+- ~~Dominio~~ ✅ resuelto (2026-09-07): `auditlake.jmartinezgr.com`, ver §9.
+  Pendiente: conectar la raíz del dominio al portafolio personal (fuera de
+  este repo) cuando se rehaga.
 - Bucket R2 de producción: hoy corre contra `auditlake-r2-test` (el mismo
   usado para verificar R2 en §9) — decidir si vale la pena crear un
   bucket separado antes de compartir el link ampliamente.
