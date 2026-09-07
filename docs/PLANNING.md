@@ -498,17 +498,25 @@ Script Python (Faker + numpy) que:
      mecanismo aparte del CORS de FastAPI. Se configuró una CORS Policy en
      el bucket (dashboard de Cloudflare) permitiendo `GET/PUT/HEAD` desde
      el dominio de Vercel y `localhost:5173`.
-  - **Limitación del free tier, mitigada (2026-09-07)**: mientras el
-    pipeline (bronze→silver→gold) procesa en background (`BackgroundTasks`,
-    síncrono, Polars) o tras un rato inactivo (cold start), el único
-    worker de Render puede tardar o resetear una conexión concurrente,
-    lo que el navegador reporta como un falso error de CORS. `lib/api.ts`
-    ahora reintenta automáticamente los `GET` (2 intentos, backoff corto)
-    ante esto, así que en la mayoría de los casos ya ni se nota — se
-    sigue viendo un mensaje "aún no está listo" un poco más largo en vez
-    de un error. Para una demo en vivo: usar datasets modestos (cientos
-    de facturas, no 50,000) sigue ayudando a que la ventana de contención
-    sea mínima.
+  - **Causa raíz real encontrada y arreglada (2026-09-07)**: buena parte
+    de estos "falsos CORS" no eran contención del free tier — eran
+    `duckdb.IOException` ("No files in log segment") sin capturar al
+    consultar `/dashboard`, `/gold`, `/gold/summary`, etc. sobre una capa
+    que aún no existe (pipeline en progreso). Una excepción no capturada
+    en FastAPI se resuelve en `ServerErrorMiddleware`, que Starlette pone
+    *fuera* de `CORSMiddleware` — el 500 resultante nunca lleva headers
+    CORS, y el navegador lo reporta como bloqueo de CORS en vez del error
+    real. Registrar un handler para la clase específica `Exception` no
+    alcanza (Starlette la sigue resolviendo en `ServerErrorMiddleware`,
+    confirmado con traceback real) — hay que capturar el tipo concreto de
+    excepción (`duckdb.IOException`) para que Starlette la enrute a
+    `ExceptionMiddleware`, que sí queda adentro de `CORSMiddleware`.
+    `main.py` ahora traduce ese caso puntual a un 404 con mensaje claro
+    ("this layer isn't available yet"), verificado con headers CORS
+    presentes de verdad. La contención de CPU del free tier durante
+    procesamiento activo sigue siendo real (mitigada por el retry de
+    `lib/api.ts`), pero ya no es la explicación principal de lo que se
+    veía en consola.
 - **CORS y `API_BASE`, listos para Vercel (2026-09-05)**: `main.py` ya no
   trae `allow_origins=["*"]` hardcodeado — ahora lee `settings.
   cors_origins_list` (`CORS_ORIGINS` en env, coma-separado; default

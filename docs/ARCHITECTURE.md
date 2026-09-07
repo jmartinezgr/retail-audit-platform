@@ -756,6 +756,22 @@ React y no puede llamar a `useI18n()`.
   Vite disponible porque frontend y backend viven en dominios
   distintos), o cae a `/api` (dev local). Nuevo
   `apps/frontend/.env.example` documentando la variable.
+- **2026-09-07**: `main.py` registra `@app.exception_handler(duckdb.
+  IOException)` — traduce "No files in log segment" (consultar una capa
+  bronze/silver/gold que aún no existe) a un 404 con `detail` claro, en
+  vez de dejarlo caer como un 500 no manejado. Importa porque un 500 sin
+  capturar en FastAPI lo resuelve `ServerErrorMiddleware`, que Starlette
+  arma *fuera* de `CORSMiddleware` — nunca lleva headers CORS, y el
+  navegador lo reporta como bloqueo de CORS en vez del error real (así se
+  veían buena parte de los "falsos CORS" de toda la sesión en `/dashboard`,
+  `/gold`, etc. mientras el pipeline corre). Un handler para la clase
+  `Exception` desnuda NO alcanza — Starlette lo sigue resolviendo en
+  `ServerErrorMiddleware` igual (confirmado con traceback real); hay que
+  capturar el tipo concreto de excepción para que la maneje
+  `ExceptionMiddleware`, que sí está adentro de `CORSMiddleware`. Se
+  mantiene un handler genérico de `Exception` como último recurso (da un
+  cuerpo JSON legible, aunque sin headers CORS — limitación de Starlette,
+  no debería dispararse en el flujo normal).
 - **2026-09-07**: dos bugs de responsive encontrados probando la app en
   viewport mobile (375px) real, no solo redimensionando el navegador:
   `job-detail-page.tsx` — el header (nombre del archivo + badge + botones
