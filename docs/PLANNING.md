@@ -568,6 +568,8 @@ Script Python (Faker + numpy) que:
 - ~~Dominio~~ ✅ resuelto (2026-09-07): `auditlake.jmartinezgr.com`, ver §9.
   Pendiente: conectar la raíz del dominio al portafolio personal (fuera de
   este repo) cuando se rehaga.
-- Bucket R2 de producción: hoy corre contra `auditlake-r2-test` (el mismo
-  usado para verificar R2 en §9) — decidir si vale la pena crear un
-  bucket separado antes de compartir el link ampliamente.
+- ~~Bucket R2 de producción~~ ✅ resuelto (2026-09-08): bucket dedicado
+  `auditlake-prod` (separado de `auditlake-r2-test`), con su propia CORS
+  Policy y token de acceso propio, verificado en vivo (generar → descargar
+  → subir sin errores). `S3_BUCKET`/`S3_ACCESS_KEY`/`S3_SECRET_KEY`
+  actualizados en Render.

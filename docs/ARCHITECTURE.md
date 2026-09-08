@@ -790,6 +790,11 @@ React y no puede llamar a `useI18n()`.
   mantiene un handler genérico de `Exception` como último recurso (da un
   cuerpo JSON legible, aunque sin headers CORS — limitación de Starlette,
   no debería dispararse en el flujo normal).
+- **2026-09-08**: producción movida del bucket de pruebas
+  (`auditlake-r2-test`) a uno dedicado (`auditlake-prod`) — CORS Policy y
+  token de acceso propios, `S3_BUCKET`/`S3_ACCESS_KEY`/`S3_SECRET_KEY`
+  actualizados en Render. Verificado en vivo: generar excel → descargar →
+  subir, sin errores de CORS.
 - **2026-09-07**: dos bugs de responsive encontrados probando la app en
   viewport mobile (375px) real, no solo redimensionando el navegador:
   `job-detail-page.tsx` — el header (nombre del archivo + badge + botones
