@@ -142,3 +142,67 @@ def test_summarize_dataset_reports_error_when_gold_not_ready(monkeypatch):
     monkeypatch.setattr(tools.httpx, "get", fake_get)
     result = tools.summarize_dataset.func(dataset_id="job-1")
     assert "error" in result
+
+
+# --- explain_invoice_result ----------------------------------------------
+
+
+def test_explain_invoice_result_returns_full_detail(monkeypatch):
+    detail = {
+        "facturas": [{"numero_factura": "FAC-1"}],
+        "items": [],
+        "evaluaciones_cabecera": [{"regla": "sede_existe", "paso": True}],
+        "evaluaciones_items": [],
+        "gold_ready": True,
+    }
+
+    def fake_get(url, timeout=None, **kwargs):
+        assert url.endswith("/audits/job-1/factura/FAC-1")
+        return FakeResponse(detail)
+
+    monkeypatch.setattr(tools.httpx, "get", fake_get)
+    result = tools.explain_invoice_result.func("FAC-1", dataset_id="job-1")
+    assert result == detail
+
+
+def test_explain_invoice_result_reports_error_when_invoice_not_found(monkeypatch):
+    def fake_get(url, timeout=None, **kwargs):
+        return FakeResponse({"facturas": [], "items": [], "gold_ready": True})
+
+    monkeypatch.setattr(tools.httpx, "get", fake_get)
+    result = tools.explain_invoice_result.func("FAC-999", dataset_id="job-1")
+    assert "error" in result
+
+
+def test_explain_invoice_result_reports_error_when_gold_not_ready(monkeypatch):
+    def fake_get(url, timeout=None, **kwargs):
+        return FakeResponse({"facturas": [{"numero_factura": "FAC-1"}], "gold_ready": False})
+
+    monkeypatch.setattr(tools.httpx, "get", fake_get)
+    result = tools.explain_invoice_result.func("FAC-1", dataset_id="job-1")
+    assert "error" in result
+
+
+# --- run_rule -------------------------------------------------------------
+
+
+def test_run_rule_returns_results(monkeypatch):
+    resultados = [{"regla": "item_cuadra", "item_id": 1, "paso": True}]
+
+    def fake_post(url, params=None, timeout=None, **kwargs):
+        assert url.endswith("/audits/job-1/factura/FAC-1/run-rule")
+        assert params == {"regla": "item_cuadra"}
+        return FakeResponse({"resultados": resultados})
+
+    monkeypatch.setattr(tools.httpx, "post", fake_post)
+    result = tools.run_rule.func("item_cuadra", "FAC-1", dataset_id="job-1")
+    assert result == resultados
+
+
+def test_run_rule_reports_error_when_not_found(monkeypatch):
+    def fake_post(url, params=None, timeout=None, **kwargs):
+        return FakeResponse({"detail": "invoice not found"}, status_code=404)
+
+    monkeypatch.setattr(tools.httpx, "post", fake_post)
+    result = tools.run_rule.func("item_cuadra", "FAC-999", dataset_id="job-1")
+    assert result[0]["error"] == "invoice not found"

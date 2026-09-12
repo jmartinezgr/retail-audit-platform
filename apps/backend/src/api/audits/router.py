@@ -2,7 +2,7 @@
 Router de Audits - dispara y consulta el procesamiento de un upload
 """
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from src.api.audits.schemas import (
@@ -15,6 +15,7 @@ from src.api.audits.schemas import (
     GoldSummaryResponse,
     LayerPreviewResponse,
     RunAuditResponse,
+    RunRuleResponse,
 )
 from src.api.audits.service import AuditService
 from src.infrastructure.db.session import SessionLocal
@@ -127,6 +128,20 @@ def get_factura_detail(upload_id: str, numero_factura: str, db: Session = Depend
     detalle de factura del frontend"""
     service = AuditService(db)
     return service.get_factura_detail(upload_id, numero_factura)
+
+
+@router.post("/{upload_id}/factura/{numero_factura}/run-rule", response_model=RunRuleResponse)
+def run_rule_on_invoice(upload_id: str, numero_factura: str, regla: str, db: Session = Depends(get_db)):
+    """Recalcula UNA regla (estática o dinámica) contra UNA factura, con
+    el estado ACTUAL de los catálogos - no lee el gold ya guardado, que
+    puede estar desactualizado. Pensado para el agente conversacional
+    (ver docs/copilot-spec.md), no tiene botón propio en el frontend."""
+    service = AuditService(db)
+    try:
+        resultados = service.run_rule_on_invoice(upload_id, numero_factura, regla)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return {"upload_id": upload_id, "numero_factura": numero_factura, "regla": regla, "resultados": resultados}
 
 
 @router.get("/{upload_id}/dashboard", response_model=DashboardResponse)

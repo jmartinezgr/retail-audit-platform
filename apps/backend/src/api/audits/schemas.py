@@ -74,6 +74,18 @@ class FacturaDetailResponse(BaseModel):
     gold_ready: bool
 
 
+class RunRuleResponse(BaseModel):
+    """Resultado de recalcular UNA regla contra UNA factura en caliente,
+    con el estado actual de los catálogos - no lee el gold ya guardado.
+    `resultados` normalmente tiene una fila (regla de cabecera) o varias
+    (regla de ítem, una por línea de la factura)."""
+
+    upload_id: str
+    numero_factura: str
+    regla: str
+    resultados: list[dict]
+
+
 class RuleFailureBreakdown(BaseModel):
     """Cuántas facturas (no filas) tienen esta regla fallando - para el
     ranking de reglas más problemáticas del dashboard"""

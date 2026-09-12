@@ -1,9 +1,11 @@
-# AuditLake Copilot — Phase 1
+# AuditLake Copilot — Phases 1 & 2
 
 A conversational agent over AuditLake's audit pipeline, built with LangGraph.
 Full spec and rationale for the whole 4-phase plan: [`docs/copilot-spec.md`](../../docs/copilot-spec.md).
-This covers Phase 1 — the minimum viable agent, plus one tool added beyond
-the original spec (explained below, with the evidence that made it necessary).
+Covers Phase 1 (minimum viable agent, plus one tool added beyond the
+original spec) and Phase 2 (explaining why an invoice failed, plus one
+tool added there too) — both explained below, with the real evidence
+that made each addition necessary.
 
 ## What it does
 
@@ -99,6 +101,76 @@ items server-side fixed it. Lesson kept here on purpose: **tool design for a
 small local model means minimizing how much reasoning you ask it to do over
 the tool's output, not just how much reasoning you ask it to do overall.**
 
+### `explain_invoice_result(invoice_id, dataset_id)`
+
+Thin wrapper over the existing `GET /audits/{id}/factura/{numero}` (the same
+endpoint the invoice detail page uses) — every rule evaluated against one
+invoice, header and item scope, from the last time gold ran. One thing that
+endpoint does *not* do on its own: it returns `200` with empty lists for an
+invoice number that doesn't exist, rather than a `404` — the tool checks
+`facturas` is non-empty itself and turns that into `{"error": ...}` before
+handing it to the model, so a typo'd invoice number doesn't get treated as
+"an invoice with zero data" instead of "not found."
+
+### `run_rule(rule_id, invoice_id, dataset_id)` — added during Phase 2, not in the original spec
+
+**Why this exists**: the spec's example question — *"run rule R-07 against
+invoice 4821"* — implies recomputing live, not reading what gold already
+says. That's a real gap: nothing in the app runs a single rule against a
+single invoice; the closest thing, "Re-run gold," recomputes *all* rules for
+*the whole dataset*. This was flagged and discussed before writing any code
+(not silently built) — the concern was that recomputing on a filtered
+subset might require real new business logic, which the spec says to avoid.
+
+It didn't, in the end: `POST /audits/{id}/factura/{numero}/run-rule` (new
+endpoint, `AuditService.run_rule_on_invoice`) reads that one invoice's
+already-typed silver rows (`duckdb_query.get_dataframe_by_factura` — new,
+see below) and the *current* catalog/dynamic-rule state, then calls
+`to_gold()` — the exact same function `run-gold` already calls for a whole
+dataset — on that one-invoice subset, and filters the output to the
+requested rule. Zero new rule logic; the new code is orchestration glue
+(read filtered, call the existing evaluator, filter the result).
+
+**A real bug found building this, not a design decision**: the first
+version read the invoice's silver rows as `list[dict]` (the existing
+`get_rows_by_factura`) and rebuilt a Polars DataFrame from them by hand.
+That silently broke `to_gold()` with a `SchemaError` whenever every row of
+*this one invoice* happened to have `codigo_descuento = null` — Polars
+infers an all-null column as type `Null` when building a DataFrame from raw
+dicts, which then fails to join against the catalog's `Utf8` column. The
+fix was `get_dataframe_by_factura`, a duckdb_query.py function that returns
+the DuckDB/Delta-backed DataFrame directly instead of round-tripping through
+dicts — it keeps Delta's real schema (a nullable Utf8 column stays Utf8
+regardless of which values happen to be null in a given subset). Lesson:
+"convert to dicts and back" is not a neutral operation for a typed data
+pipeline, even when it looks like one.
+
+## Known model limitations (not tool bugs)
+
+Two failure modes showed up live, both about the *last* step — the model
+narrating a tool's result — not about the tools or their data:
+
+- **Aggregation over raw rows is unreliable** (Phase 1, see
+  `summarize_dataset` above) — fixed by pre-aggregating server-side instead
+  of asking the model to count.
+- **Summarizing a longer already-correct list is not reliably faithful**
+  (Phase 2, found testing `explain_invoice_result`): asked to summarize an
+  invoice with ~20 rule evaluations (only 1 actually failing), the model
+  correctly *listed* every rule's real status, then wrote a closing summary
+  claiming "4 errors" and describing problems ("discount code issues") that
+  contradicted its own list two lines above — reproduced twice. The same
+  question against `run_rule`'s single-row result (one rule, one invoice)
+  came back clean and accurate both times. Not fixed here — unlike the
+  aggregation case, there's no equivalent "pre-compute it server-side"
+  escape hatch when the ask is genuinely "summarize this specific record's
+  results in prose." Worth trying a stronger model (or a stricter system
+  prompt requiring the model to recompute stated counts against the actual
+  data before answering) before Phase 3, not worth guessing at blind.
+- Both times, the model also ignored an explicit "answer in one sentence" /
+  "only the header rules" instruction and produced the full unfiltered
+  breakdown anyway — an instruction-following gap distinct from the
+  factual-accuracy one above.
+
 ## The graph
 
 ```
@@ -190,8 +262,8 @@ by design, see "Architecture" above.
 python -m pytest -v
 ```
 
-12 tests: unit tests for all three tools (backend mocked at the `httpx`
-boundary, same standard as `packages/domain`'s 97 tests), plus two graph
+17 tests: unit tests for all five tools (backend mocked at the `httpx`
+boundary, same standard as `packages/domain`'s 99 tests), plus two graph
 integration tests with the LLM itself scripted — asserting on the tool-call
 sequence and message shape (`test_graph_calls_tool_then_answers`), and on
 the step cap producing a partial answer instead of hanging

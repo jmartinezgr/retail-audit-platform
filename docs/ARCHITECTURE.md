@@ -846,6 +846,32 @@ React y no puede llamar a `useI18n()`.
   `apps/frontend/vercel.json` con `rewrites` a `index.html` — y CORS a
   nivel de bucket R2, aparte del CORS de FastAPI, configurado en el
   dashboard de Cloudflare).
+- **2026-09-12**: Fase 2 del agente (`apps/agent/`) — dos tools nuevas:
+  `explain_invoice_result` (gratis, envuelve `GET
+  /audits/{id}/factura/{numero}` ya existente) y `run_rule` (nueva de
+  verdad: `POST /audits/{id}/factura/{numero}/run-rule`, nuevo endpoint
+  + `AuditService.run_rule_on_invoice` — recalcula una regla puntual
+  contra una factura puntual con el estado *actual* de los catálogos,
+  reusando `to_gold()` sobre un subconjunto en vez de todo el dataset;
+  no existía nada parecido, se discutió con el usuario antes de
+  construirlo). Bug real encontrado en el camino:
+  `duckdb_query.get_rows_by_factura()` devuelve `list[dict]`, y
+  reconstruir un `pl.DataFrame` desde esos dicts pierde el tipo real de
+  una columna nullable cuando todas las filas de esa factura puntual
+  son null ahí (`codigo_descuento`, por ejemplo) — Polars infiere `Null`
+  en vez de `Utf8` desde una muestra sin valores, lo que rompe el join
+  contra el catálogo con `SchemaError`. Se agregó
+  `duckdb_query.get_dataframe_by_factura()`, que devuelve el DataFrame
+  directo de Delta (conserva el schema real) en vez de pasar por dicts;
+  `get_rows_by_factura()` ahora es un wrapper de esa. Detalle completo
+  en `apps/agent/README.md`, incluyendo dos límites reales del modelo
+  local (`qwen2.5:7b`) encontrados probando en vivo, no solo con tests
+  mockeados: no agrega bien sobre filas crudas (ya mitigado en Fase 1
+  con `summarize_dataset`), y no siempre resume fielmente una lista ya
+  correcta y larga (~20 evaluaciones) — el modelo lista los datos bien
+  pero después inventa un conteo distinto en el resumen; reproducido 2
+  de 2 veces, sin mitigación aplicada todavía (documentado como
+  limitación abierta, no como bug de las tools).
 - **2026-09-12**: `apps/agent/` — Fase 1 del agente conversacional
   (`docs/copilot-spec.md`), rama `feature/agent-copilot`. LangGraph +
   `ChatOllama` (`qwen2.5:7b` local). Tres tools, no dos como pedía el

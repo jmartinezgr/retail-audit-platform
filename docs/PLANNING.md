@@ -578,9 +578,30 @@ Script Python (Faker + numpy) que:
      que ya trae el ranking calculado server-side, cero lógica nueva).
      El agente le pega al backend por HTTP, nunca importa
      `infrastructure/` — decisión explícita para no duplicar
-     credenciales de Postgres/R2. 12 tests (unitarios con el backend
-     mockeado + integración con el LLM scripteado). Costo medido: 3,066
-     tokens para una pregunta típica de 2 pasos.
+     credenciales de Postgres/R2. Costo medido: 3,066 tokens para una
+     pregunta típica de 2 pasos.
+   - ✅ Fase 2 del spec (2026-09-12): **5 tools, no 4** —
+     `explain_invoice_result` (gratis, envuelve `GET
+     /audits/{id}/factura/{numero}` que ya existía) y `run_rule` (esta
+     sí necesitó código nuevo real: `POST
+     /audits/{id}/factura/{numero}/run-rule`, endpoint nuevo que
+     recalcula una regla puntual contra una factura puntual con el
+     estado ACTUAL de los catálogos — se discutió con el usuario antes
+     de construirla, porque no existía nada parecido en la app, ni
+     siquiera un botón; lo más cercano era "Re-run gold" para el
+     dataset completo). Reusa `to_gold()` tal cual sobre un subconjunto
+     de una factura — cero lógica de reglas nueva, solo la
+     orquestación de leerlo filtrado y correr lo que ya existe. En el
+     camino se encontró y arregló un bug real: reconstruir un
+     DataFrame de Polars desde una lista de dicts pierde el tipo de una
+     columna nullable cuando *todas* las filas de esa factura puntual
+     tienen valor null ahí — `duckdb_query.get_dataframe_by_factura()`
+     (nueva) lee el DataFrame directo de Delta en vez de pasar por
+     dicts, conservando el schema real. 17 tests en total. Detalle
+     completo, incluyendo dos límites reales del modelo local
+     encontrados probando en vivo (agregación sobre filas crudas no
+     confiable, y resumir fielmente una lista larga tampoco) en
+     `apps/agent/README.md`.
 
 ## 11. Abierto / por decidir más adelante
 

@@ -217,6 +217,29 @@ class AuditService:
             "gold_ready": gold_ready,
         }
 
+    def run_rule_on_invoice(self, upload_id: str, numero_factura: str, regla: str) -> list[dict]:
+        """Corre UNA regla puntual (estática o dinámica) contra UNA
+        factura puntual, con el estado ACTUAL de los catálogos - no lee
+        el gold ya guardado (que puede estar desactualizado si algo del
+        catálogo cambió desde el último 'run-gold'), lo recalcula al
+        vuelo. Pensado para el agente conversacional (ver
+        docs/copilot-spec.md, Fase 2) - reusa to_gold/evaluar tal cual,
+        solo que sobre un subconjunto de una factura en vez del dataset
+        completo, y descarta el resto de las reglas del resultado."""
+        facturas = duckdb_query.get_dataframe_by_factura(_silver_facturas_key(upload_id), numero_factura)
+        items = duckdb_query.get_dataframe_by_factura(_silver_items_key(upload_id), numero_factura)
+        if facturas.is_empty():
+            raise ValueError(f"Factura '{numero_factura}' no encontrada en el upload {upload_id}")
+
+        catalogos = load_catalog_snapshot(self.db)
+        reglas_dinamicas = load_reglas_dinamicas(self.db)
+
+        resultado = to_gold(facturas, items, catalogos, reglas_dinamicas=reglas_dinamicas)
+        filas = resultado.filter(pl.col("regla") == regla).to_dicts()
+        if not filas:
+            raise ValueError(f"La regla '{regla}' no existe o no aplica al ámbito de esta factura")
+        return filas
+
     def get_dashboard(self, upload_id: str) -> dict:
         stats = duckdb_query.dashboard_stats(_gold_key(upload_id), _silver_facturas_key(upload_id))
         return {"upload_id": upload_id, **stats}

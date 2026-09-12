@@ -11,6 +11,7 @@ service si no hay un Secret configurado, y eso truena contra MinIO/R2
 """
 
 import duckdb
+import polars as pl
 
 from src.infrastructure.config.settings import settings
 
@@ -129,19 +130,25 @@ def matrix_gold(object_key: str, limit: int = 25, offset: int = 0) -> tuple[list
     return rows, total
 
 
+def get_dataframe_by_factura(object_key: str, numero_factura: str) -> pl.DataFrame:
+    """Todas las filas de una tabla Delta (silver o gold) para una
+    numero_factura exacta, como DataFrame - conserva el schema real de
+    Delta (ej. una columna nullable sigue siendo Utf8 aunque todas las
+    filas de ESTA factura sean null, que es justo lo que rompía si se
+    reconstruía el DataFrame a mano desde una lista de dicts - ver
+    run_rule_on_invoice en api/audits/service.py)."""
+    con = _connection()
+    uri = _delta_uri(object_key)
+    return con.execute(
+        f"SELECT * FROM delta_scan('{uri}') WHERE numero_factura = ?",
+        [numero_factura],
+    ).pl()
+
+
 def get_rows_by_factura(object_key: str, numero_factura: str) -> list[dict]:
     """Todas las filas de una tabla Delta (silver o gold) para una
     numero_factura exacta - usado por la página de detalle de factura."""
-    con = _connection()
-    uri = _delta_uri(object_key)
-    return (
-        con.execute(
-            f"SELECT * FROM delta_scan('{uri}') WHERE numero_factura = ?",
-            [numero_factura],
-        )
-        .pl()
-        .to_dicts()
-    )
+    return get_dataframe_by_factura(object_key, numero_factura).to_dicts()
 
 
 def dashboard_stats(gold_key: str, silver_facturas_key: str) -> dict:
