@@ -8,8 +8,8 @@ from datetime import date
 
 import polars as pl
 
-from src.domain.rules.engine import evaluar
-from src.domain.rules.types import CatalogosSnapshot, ReglaDinamica
+from domain.rules.engine import evaluar
+from domain.rules.types import CatalogosSnapshot, ReglaDinamica
 
 
 def to_gold(

@@ -27,8 +27,8 @@ from datetime import date, timedelta
 
 import polars as pl
 
-from src.domain.rules.types import CatalogosSnapshot
-from src.domain.ventas import MetodoPago
+from domain.rules.types import CatalogosSnapshot
+from domain.ventas import MetodoPago
 
 IVA_PCT = 19
 

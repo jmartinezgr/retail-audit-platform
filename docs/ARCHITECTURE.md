@@ -362,32 +362,54 @@ si hace falta editarlos desde el frontend más adelante).
 
 ## Convención de imports
 
-Sin `__init__.py` (namespace packages implícitos de Python 3) — así estaba
-ya y se mantiene. Los imports son siempre absolutos desde `src`, ej.
-`from src.infrastructure.db.uploads.repository import UploadRepository`.
-Se corre con `uvicorn src.main:app` desde `apps/backend/` (para que `src`
-resuelva como paquete).
+`domain/` es un paquete instalable aparte (`packages/domain/`, ver
+sección siguiente) — se importa con `from domain.rules.engine import
+evaluar`, sin prefijo. Todo lo demás en `apps/backend/src/` sigue sin
+`__init__.py` (namespace packages implícitos de Python 3), con imports
+absolutos desde `src`, ej. `from src.infrastructure.db.uploads.repository
+import UploadRepository`. Se corre con `uvicorn src.main:app` desde
+`apps/backend/` (para que `src` resuelva como paquete).
+
+## `packages/domain/` — el dominio como paquete compartido
+
+Movido de `apps/backend/src/domain/` (2026-09-12) para poder reusarlo
+desde un segundo consumidor (el agente conversacional, ver
+`docs/copilot-spec.md`) sin duplicar lógica ni acoplar su ciclo de deploy
+al del backend. Es un paquete Python real (`pyproject.toml`,
+`src/domain/` con `__init__.py` — a diferencia de `apps/backend/src`, acá
+sí hacen falta porque `setuptools` necesita paquetes regulares para
+instalarlo), con **su propio venv**, instalado en modo editable
+(`pip install -e packages/domain`) por cada consumidor. Sin dependencias
+de framework — solo `polars` y `fastexcel` (que Polars necesita para leer
+`.xlsx`). Cada consumidor (`apps/backend`, y a futuro `apps/agent`)
+declara esa ruta relativa en su propio `requirements.txt`
+(`-e ../../packages/domain`) y mantiene sus dependencias pesadas
+(FastAPI/SQLAlchemy vs. LangChain/LangGraph) completamente separadas —
+lo único que comparten de verdad es esta carpeta.
 
 ## Tests
 
-`apps/backend/tests/`, con `pytest` — la estructura espeja `src/` (ej.
-`tests/domain/pipeline/test_silver.py` para `src/domain/pipeline/silver.py`,
-`tests/domain/rules/test_engine.py` para `src/domain/rules/engine.py`,
-`tests/domain/demo/test_generator.py` para `src/domain/demo/generator.py`).
-Hoy solo cubre `domain/` (pipeline + rules + demo) porque es la parte
-pura/sin infraestructura — justo la ventaja de haber aislado `domain/` de
-FastAPI/SQLAlchemy/Minio desde el principio: 87 tests, todos con datos en
-memoria, sin Postgres ni MinIO corriendo (los tests de `rules/engine.py`
+**`packages/domain/tests/`**, con `pytest` — mueve con el paquete, espeja
+`src/domain/` (ej. `tests/pipeline/test_silver.py` para
+`src/domain/pipeline/silver.py`). 97 tests, todos con datos en memoria,
+sin Postgres ni MinIO ni FastAPI corriendo (los tests de `rules/engine.py`
 y `demo/generator.py` construyen su propio `CatalogosSnapshot` de
 juguete en vez de leer Postgres de verdad — con cobertura completa
 sede×producto en `transferencias`, para no repetir el problema real que
-salió al validar el generador contra el seed de verdad). `tests/conftest.py`
-mete `apps/backend` en `sys.path` (no hay `__init__.py`, así que sin esto
-los imports `from src....` no resuelven).
-
-Correr desde `apps/backend` con el venv activo:
+salió al validar el generador contra el seed de verdad). Corren
+standalone con el venv propio de `packages/domain/` — prueba en la
+práctica que el paquete no arrastra nada de FastAPI/SQLAlchemy/Minio:
 ```
-python -m pytest -v
+cd packages/domain && python -m pytest -v
+```
+
+**`apps/backend/tests/`** — hoy solo queda `conftest.py` (mete
+`apps/backend` en `sys.path` para que `from src....` resuelva sin
+`__init__.py`); no hay tests propios del backend todavía porque toda la
+lógica pura vivía en `domain/`, ya movido. Corre igual con el venv del
+backend si algún día se agregan tests de `api/`/`infrastructure/`:
+```
+cd apps/backend && python -m pytest -v
 ```
 
 ## Scripts operativos
@@ -824,3 +846,15 @@ React y no puede llamar a `useI18n()`.
   `apps/frontend/vercel.json` con `rewrites` a `index.html` — y CORS a
   nivel de bucket R2, aparte del CORS de FastAPI, configurado en el
   dashboard de Cloudflare).
+- **2026-09-12**: `domain/` movido de `apps/backend/src/domain/` a
+  `packages/domain/` (rama `feature/agent-copilot`, sin mergear a `main`
+  todavía) — primer paso para el agente conversacional de
+  `docs/copilot-spec.md`, que necesita importar el mismo dominio sin
+  duplicar lógica ni acoplarse al deploy del backend. Ver la sección
+  nueva "`packages/domain/` — el dominio como paquete compartido" más
+  arriba para el detalle. Los 97 tests de dominio corren ahora standalone
+  en el venv propio del paquete, sin backend ni Postgres ni MinIO — antes
+  de este cambio corrían dentro de `apps/backend/tests/`, misma
+  cobertura, mismos casos, solo cambió dónde viven. Cero cambios de
+  comportamiento, solo de ubicación e imports (`from src.domain...` →
+  `from domain...` en los ~20 archivos que lo consumían).

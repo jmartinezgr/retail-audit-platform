@@ -3,8 +3,8 @@ from datetime import date
 import polars as pl
 import pytest
 
-from src.domain.pipeline.gold import to_gold
-from src.domain.rules.types import CatalogosSnapshot
+from domain.pipeline.gold import to_gold
+from domain.rules.types import CatalogosSnapshot
 
 HOY = date(2026, 9, 1)
 

@@ -9,9 +9,9 @@ consultar la DB - mismo patrón delgado que AuditService.
 
 from sqlalchemy.orm import Session
 
-from src.domain.catalog import Categoria
-from src.domain.rules.dynamic import CAMPOS_CABECERA, CAMPOS_ITEM
-from src.domain.rules.engine import NOMBRES_REGLAS_ESTATICAS
+from domain.catalog import Categoria
+from domain.rules.dynamic import CAMPOS_CABECERA, CAMPOS_ITEM
+from domain.rules.engine import NOMBRES_REGLAS_ESTATICAS
 from src.infrastructure.db.catalog.repository import CatalogRepository
 from src.infrastructure.db.rules.models import RuleDefinitionModel
 from src.infrastructure.db.rules.repository import RuleDefinitionRepository

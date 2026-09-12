@@ -117,13 +117,15 @@ Open the printed frontend URL, generate a synthetic Excel from the home screen (
 ## Project structure
 
 ```
+packages/
+  domain/              # pure business logic — pipeline, rule engine, synthetic generator (no framework imports)
+    src/domain/          # installable package, its own venv, editable-installed by each consumer below
+    tests/               # pytest, mirrors src/domain/ — runs standalone, no FastAPI/Postgres/MinIO needed
 apps/
   backend/
     src/
-      domain/          # pure business logic — pipeline, rule engine, synthetic generator (no framework imports)
       infrastructure/   # Postgres, MinIO/R2, Delta, DuckDB adapters
       api/               # FastAPI routers + Pydantic schemas, one subfolder per feature
-    tests/               # pytest, mirrors src/, covers domain/ only (the part with no external dependencies)
     scripts/             # seed_catalog.py and other one-off operational scripts
   frontend/
     src/

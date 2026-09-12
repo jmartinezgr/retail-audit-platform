@@ -1,4 +1,4 @@
-from src.domain.ventas import (
+from domain.ventas import (
     FACTURA_COLUMNAS_REQUERIDAS,
     ITEM_COLUMNAS_REQUERIDAS,
     validar_columnas_factura,

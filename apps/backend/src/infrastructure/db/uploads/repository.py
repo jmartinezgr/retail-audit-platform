@@ -5,7 +5,7 @@ Solo acceso a datos
 
 from sqlalchemy.orm import Session
 from src.infrastructure.db.uploads.models import UploadModel
-from src.domain.uploads import UploadStatus
+from domain.uploads import UploadStatus
 
 
 class UploadRepository:

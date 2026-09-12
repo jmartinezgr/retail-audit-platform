@@ -9,7 +9,7 @@ dominio (domain/rules/dynamic.evaluar_dinamicas), no de infraestructura.
 
 from sqlalchemy.orm import Session
 
-from src.domain.rules.types import AmbitoRegla, Operador, ReglaDinamica, Severidad, TipoReglaDinamica
+from domain.rules.types import AmbitoRegla, Operador, ReglaDinamica, Severidad, TipoReglaDinamica
 from src.infrastructure.db.rules.repository import RuleDefinitionRepository
 
 

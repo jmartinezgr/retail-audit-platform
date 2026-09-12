@@ -557,6 +557,15 @@ Script Python (Faker + numpy) que:
    en vivo end-to-end en el navegador (ver §9). Queda abierto ajustar al
    VPS de $5 solo si el cold-start/contención del free tier resulta ser
    un problema real en una demo concreta.
+9. 🚧 Agente conversacional sobre el dominio (LangGraph + tools +
+   RAG + servidor MCP) — spec completo en `docs/copilot-spec.md`, en
+   progreso en la rama `feature/agent-copilot`, no mergeado a `main`.
+   Motivación: el usuario está buscando trabajo en backend/ingeniería de
+   IA y varias ofertas piden experiencia con LangChain/RAG/MCP — la
+   decisión explícita es que el agente nunca reimplemente lógica de
+   auditoría, solo llame al dominio ya probado (97 tests) vía tools
+   delgadas. Primer paso (2026-09-12): `domain/` movido a
+   `packages/domain/` como paquete compartido — ver `ARCHITECTURE.md`.
 
 ## 11. Abierto / por decidir más adelante
 

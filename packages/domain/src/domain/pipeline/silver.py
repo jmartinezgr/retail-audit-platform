@@ -15,7 +15,7 @@ parámetro en vez de hacerla ella misma "de negocio" en gold.
 
 import polars as pl
 
-from src.domain.ventas import (
+from domain.ventas import (
     FACTURA_COLUMNAS_OPCIONALES,
     FACTURA_COLUMNAS_REQUERIDAS,
     ITEM_COLUMNAS_OPCIONALES,

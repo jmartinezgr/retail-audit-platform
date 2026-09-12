@@ -16,8 +16,8 @@ from datetime import date
 
 import polars as pl
 
-from src.domain.rules.dynamic import evaluar_dinamicas
-from src.domain.rules.types import CatalogosSnapshot, ReglaDinamica, Severidad, construir_resultado
+from domain.rules.dynamic import evaluar_dinamicas
+from domain.rules.types import CatalogosSnapshot, ReglaDinamica, Severidad, construir_resultado
 
 TOLERANCIA_TOTAL = 0.01
 

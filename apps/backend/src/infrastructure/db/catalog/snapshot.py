@@ -9,7 +9,7 @@ después de que se generó silver.
 import polars as pl
 from sqlalchemy.orm import Session
 
-from src.domain.rules.types import CatalogosSnapshot
+from domain.rules.types import CatalogosSnapshot
 from src.infrastructure.db.catalog.repository import CatalogRepository
 
 

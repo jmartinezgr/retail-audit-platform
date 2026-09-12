@@ -11,8 +11,8 @@ from io import BytesIO
 from sqlalchemy.orm import Session
 from xlsxwriter import Workbook
 
-from src.domain.demo.generator import generar_ventas
-from src.domain.pipeline.bronze import HOJA_FACTURAS, HOJA_ITEMS
+from domain.demo.generator import generar_ventas
+from domain.pipeline.bronze import HOJA_FACTURAS, HOJA_ITEMS
 from src.infrastructure.db.catalog.snapshot import load_catalog_snapshot
 from src.infrastructure.storage.s3_client import (
     get_presigned_download_url,

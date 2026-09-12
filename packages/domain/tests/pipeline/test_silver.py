@@ -1,7 +1,7 @@
 import polars as pl
 import pytest
 
-from src.domain.pipeline.silver import SilverSchemaError, to_silver_facturas, to_silver_items
+from domain.pipeline.silver import SilverSchemaError, to_silver_facturas, to_silver_items
 
 VALID_FACTURA = {
     "numero_factura": "FAC-0001",

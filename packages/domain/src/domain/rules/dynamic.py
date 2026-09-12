@@ -23,7 +23,7 @@ from collections.abc import Callable
 
 import polars as pl
 
-from src.domain.rules.types import AmbitoRegla, Operador, ReglaDinamica, TipoReglaDinamica, construir_resultado
+from domain.rules.types import AmbitoRegla, Operador, ReglaDinamica, TipoReglaDinamica, construir_resultado
 
 # Campos permitidos por ámbito para reglas UMBRAL. `descuento_pct` y
 # `margen_pct` son calculados acá mismo (no viven en engine.py - son

@@ -10,10 +10,10 @@ import polars as pl
 from sqlalchemy.orm import Session
 from xlsxwriter import Workbook
 
-from src.domain.pipeline.bronze import to_bronze
-from src.domain.pipeline.gold import to_gold
-from src.domain.pipeline.silver import to_silver_facturas, to_silver_items
-from src.domain.uploads import UploadStatus
+from domain.pipeline.bronze import to_bronze
+from domain.pipeline.gold import to_gold
+from domain.pipeline.silver import to_silver_facturas, to_silver_items
+from domain.uploads import UploadStatus
 from src.infrastructure.db.catalog.snapshot import load_catalog_snapshot
 from src.infrastructure.db.rules.snapshot import load_reglas_dinamicas
 from src.infrastructure.db.uploads.repository import UploadRepository

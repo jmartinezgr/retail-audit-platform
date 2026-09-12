@@ -3,7 +3,7 @@ from datetime import datetime
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.infrastructure.db.base import Base
-from src.domain.uploads import UploadStatus
+from domain.uploads import UploadStatus
 
 
 class UploadModel(Base):

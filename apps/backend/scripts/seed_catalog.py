@@ -27,7 +27,7 @@ from src.infrastructure.db.catalog.models import (
     TransferenciaModel,
     CompradorModel,
 )
-from src.domain.catalog import TipoDescuento, Categoria
+from domain.catalog import TipoDescuento, Categoria
 
 SEED = 42
 random.seed(SEED)

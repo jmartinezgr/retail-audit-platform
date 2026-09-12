@@ -2,10 +2,10 @@ from datetime import date
 
 import polars as pl
 
-from src.domain.demo.generator import generar_ventas
-from src.domain.pipeline.gold import to_gold
-from src.domain.pipeline.silver import to_silver_facturas, to_silver_items
-from src.domain.rules.types import CatalogosSnapshot
+from domain.demo.generator import generar_ventas
+from domain.pipeline.gold import to_gold
+from domain.pipeline.silver import to_silver_facturas, to_silver_items
+from domain.rules.types import CatalogosSnapshot
 
 # Fija - generar_ventas() y to_gold() aceptan `hoy` como parámetro
 # inyectable justo para que estos tests no dependan del reloj real (nos

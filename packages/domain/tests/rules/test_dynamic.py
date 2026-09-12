@@ -2,8 +2,8 @@ from datetime import date
 
 import polars as pl
 
-from src.domain.pipeline.gold import to_gold
-from src.domain.rules.types import AmbitoRegla, CatalogosSnapshot, Operador, ReglaDinamica, Severidad, TipoReglaDinamica
+from domain.pipeline.gold import to_gold
+from domain.rules.types import AmbitoRegla, CatalogosSnapshot, Operador, ReglaDinamica, Severidad, TipoReglaDinamica
 
 HOY = date(2026, 9, 1)
 

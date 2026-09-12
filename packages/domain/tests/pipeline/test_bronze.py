@@ -4,7 +4,7 @@ import polars as pl
 import pytest
 from xlsxwriter import Workbook
 
-from src.domain.pipeline.bronze import HojaFaltanteError, read_columns, to_bronze
+from domain.pipeline.bronze import HojaFaltanteError, read_columns, to_bronze
 
 FACTURAS = pl.DataFrame({"numero_factura": ["FAC-0001", "FAC-0002"], "total_factura": [119000.0, 238000.0]})
 ITEMS = pl.DataFrame({"numero_factura": ["FAC-0001", "FAC-0002"], "cantidad": [2, 1]})

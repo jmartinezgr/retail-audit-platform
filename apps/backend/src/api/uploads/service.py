@@ -9,9 +9,9 @@ from datetime import timedelta
 from sqlalchemy.orm import Session
 
 from src.infrastructure.db.uploads.repository import UploadRepository
-from src.domain.pipeline.bronze import HOJA_FACTURAS, HOJA_ITEMS, read_columns
-from src.domain.uploads import UploadStatus
-from src.domain.ventas import validar_columnas_factura, validar_columnas_item
+from domain.pipeline.bronze import HOJA_FACTURAS, HOJA_ITEMS, read_columns
+from domain.uploads import UploadStatus
+from domain.ventas import validar_columnas_factura, validar_columnas_item
 from src.infrastructure.config.settings import settings
 from src.infrastructure.storage.s3_client import get_s3_client, get_object_bytes
 
