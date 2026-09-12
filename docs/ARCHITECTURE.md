@@ -846,6 +846,29 @@ React y no puede llamar a `useI18n()`.
   `apps/frontend/vercel.json` con `rewrites` a `index.html` — y CORS a
   nivel de bucket R2, aparte del CORS de FastAPI, configurado en el
   dashboard de Cloudflare).
+- **2026-09-12**: `apps/agent/` — Fase 1 del agente conversacional
+  (`docs/copilot-spec.md`), rama `feature/agent-copilot`. LangGraph +
+  `ChatOllama` (`qwen2.5:7b` local). Tres tools, no dos como pedía el
+  spec original — `get_rule` y `query_gold_results` tal cual, más
+  `summarize_dataset` (nueva, envuelve `GET /audits/{id}/dashboard`)
+  agregada porque probar la pregunta de ejemplo del spec en vivo
+  ("¿qué reglas fallaron más?") reveló que un modelo de 7B no agrega
+  bien filas crudas a mano — el dashboard ya trae el ranking calculado
+  server-side, así que la tool nueva es puro reuso, no lógica nueva.
+  También se agregó `packages/domain/src/domain/rules/catalog.py`
+  (metadata de las 18 reglas estáticas, antes solo prosa en
+  `DATA_MODEL.md`) + `GET /rules/static` en el backend, porque
+  `get_rule` no tenía de dónde leer la descripción de una regla
+  estática sin esto — exactamente el caso que el spec pide marcar en
+  vez de inventar. El agente llama al backend por HTTP (`httpx`), nunca
+  importa `infrastructure/` directo — así no duplica credenciales de
+  Postgres/R2 en un tercer lugar; implica que el backend debe estar
+  corriendo para poder probar el agente. Detalle completo (grafo, step
+  cap, manejo de errores de tools, costo medido en tokens) en
+  `apps/agent/README.md`. 12 tests (`apps/agent/tests/`) — tools
+  mockeadas a nivel de `httpx`, más una integración con el LLM
+  scripteado (no un modelo real) para probar el enrutamiento del grafo
+  y el tope de pasos de forma determinística.
 - **2026-09-12**: `domain/` movido de `apps/backend/src/domain/` a
   `packages/domain/` (rama `feature/agent-copilot`, sin mergear a `main`
   todavía) — primer paso para el agente conversacional de

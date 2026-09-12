@@ -4,6 +4,7 @@ frontend, sin tocar código. Ver domain/rules/dynamic.py para el
 evaluador y docs/PLANNING.md §7 / docs/ARCHITECTURE.md para el diseño.
 """
 
+from domain.rules.catalog import CATALOGO_REGLAS_ESTATICAS
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -12,6 +13,7 @@ from src.api.rules.schemas import (
     RuleDefinitionCreate,
     RuleDefinitionResponse,
     RuleDefinitionUpdate,
+    StaticRuleResponse,
 )
 from src.api.rules.service import RuleService, RuleValidationError
 from src.infrastructure.db.session import SessionLocal
@@ -33,6 +35,21 @@ def get_available_fields(db: Session = Depends(get_db)):
     del catálogo - para poblar los selects del formulario sin
     hardcodearlos en el frontend"""
     return RuleService(db).get_available_fields()
+
+
+@router.get("/static", response_model=list[StaticRuleResponse])
+def list_static_rules():
+    """Las 18 reglas hardcodeadas (no las dinámicas de la tabla
+    rule_definitions) - dato de solo lectura, no toca la DB."""
+    return list(CATALOGO_REGLAS_ESTATICAS.values())
+
+
+@router.get("/static/{nombre}", response_model=StaticRuleResponse)
+def get_static_rule(nombre: str):
+    regla = CATALOGO_REGLAS_ESTATICAS.get(nombre)
+    if regla is None:
+        raise HTTPException(status_code=404, detail=f"No existe una regla estática llamada '{nombre}'")
+    return regla
 
 
 @router.get("/", response_model=list[RuleDefinitionResponse])

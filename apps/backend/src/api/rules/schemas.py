@@ -65,6 +65,19 @@ class RuleDefinitionResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class StaticRuleResponse(BaseModel):
+    """Metadata descriptiva de una de las 18 reglas estáticas (nombre,
+    severidad, ámbito, origen endógeno/exógeno, qué valida) - no es una
+    RuleDefinition editable, son las reglas hardcodeadas en
+    domain/rules/engine.py, expuestas como dato de solo lectura."""
+
+    nombre: str
+    severidad: str
+    ambito: str
+    origen: str
+    descripcion: str
+
+
 class FieldOption(BaseModel):
     campo: str
     label: str

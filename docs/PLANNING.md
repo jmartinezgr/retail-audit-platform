@@ -564,8 +564,23 @@ Script Python (Faker + numpy) que:
    IA y varias ofertas piden experiencia con LangChain/RAG/MCP — la
    decisión explícita es que el agente nunca reimplemente lógica de
    auditoría, solo llame al dominio ya probado (97 tests) vía tools
-   delgadas. Primer paso (2026-09-12): `domain/` movido a
-   `packages/domain/` como paquete compartido — ver `ARCHITECTURE.md`.
+   delgadas.
+   - ✅ Paso 1 (2026-09-12): `domain/` movido a `packages/domain/` como
+     paquete compartido — ver `ARCHITECTURE.md`.
+   - ✅ Fase 1 del spec (2026-09-12): `apps/agent/` — agente mínimo con
+     LangGraph + Ollama (`qwen2.5:7b`, corre local, confirmado con
+     tool-calling nativo real). Detalle completo, decisiones y
+     mediciones en `apps/agent/README.md`. Resumen: **3 tools, no 2**
+     (`get_rule`, `query_gold_results`, y `summarize_dataset` agregada
+     en el camino — la pregunta de ejemplo del spec, "qué reglas
+     fallaron más", falla con un modelo de 7B si tiene que contar filas
+     crudas a mano; se resolvió reusando `GET /audits/{id}/dashboard`,
+     que ya trae el ranking calculado server-side, cero lógica nueva).
+     El agente le pega al backend por HTTP, nunca importa
+     `infrastructure/` — decisión explícita para no duplicar
+     credenciales de Postgres/R2. 12 tests (unitarios con el backend
+     mockeado + integración con el LLM scripteado). Costo medido: 3,066
+     tokens para una pregunta típica de 2 pasos.
 
 ## 11. Abierto / por decidir más adelante
 
