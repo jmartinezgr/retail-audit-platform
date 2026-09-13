@@ -626,3 +626,26 @@ Script Python (Faker + numpy) que:
   Policy y token de acceso propio, verificado en vivo (generar → descargar
   → subir sin errores). `S3_BUCKET`/`S3_ACCESS_KEY`/`S3_SECRET_KEY`
   actualizados en Render.
+- **Opción a futuro para `apps/agent/`: nodo verificador en el grafo.**
+  Hoy dos límites del modelo local están documentados en
+  `apps/agent/README.md`: uno ya arreglado (agregación/conteo sobre
+  listas — resuelto precalculando el número, ver Fase 2 arriba) y uno
+  abierto (el modelo ignora instrucciones de formato — "una frase",
+  "solo cabecera" — y responde igual con el desglose completo). Un nodo
+  nuevo en el grafo (`graph.py`), corriendo después de `agent` y antes
+  de terminar, podría revisar programáticamente la respuesta final
+  contra el resultado real de la última tool — dos chequeos posibles y
+  separados:
+  - **Conteos**: si la respuesta menciona un número, que coincida con
+    cualquier `resumen`/`total_*` real disponible (mismo problema que ya
+    se resolvió precalculando, pero como red de seguridad genérica en
+    vez de caso por caso en cada tool).
+  - **Formato**: si el usuario pidió algo puntual (una frase, N ítems,
+    solo cierto ámbito), verificar que la respuesta lo respete antes de
+    devolverla — y si no, pedirle al modelo una respuesta corregida
+    (un ciclo extra `agent -> verificador -> agent`, bajo el mismo tope
+    de `MAX_STEPS`).
+  No implementado todavía — es más código (un nodo + lógica de
+  validación + parsing de la respuesta) que las otras fases, y vale más
+  como idea bien razonada en el README para la entrevista que como
+  código a medio probar. Evaluar después de la Fase 3 (RAG), no antes.
