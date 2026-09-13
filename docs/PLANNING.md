@@ -597,11 +597,19 @@ Script Python (Faker + numpy) que:
      columna nullable cuando *todas* las filas de esa factura puntual
      tienen valor null ahí — `duckdb_query.get_dataframe_by_factura()`
      (nueva) lee el DataFrame directo de Delta en vez de pasar por
-     dicts, conservando el schema real. 17 tests en total. Detalle
-     completo, incluyendo dos límites reales del modelo local
-     encontrados probando en vivo (agregación sobre filas crudas no
-     confiable, y resumir fielmente una lista larga tampoco) en
-     `apps/agent/README.md`.
+     dicts, conservando el schema real. 17 tests en total.
+   - ✅ Arreglado (2026-09-13): el segundo límite del modelo (resumir
+     fielmente una lista larga) — `explain_invoice_result` ahora
+     devuelve un `resumen` pre-calculado (conteos) y una lista
+     `violaciones` (solo lo que falló), en vez de dejarle el conteo al
+     modelo sobre ~20 filas crudas — mismo patrón que ya había
+     funcionado para `summarize_dataset`. Reforzado también el system
+     prompt para que use cualquier campo pre-contado tal cual, sin
+     recontar. Verificado re-corriendo la misma pregunta que reproducía
+     el bug — el conteo ahora coincide con la realidad. El problema de
+     seguimiento de instrucciones (ignorar "una frase"/"solo cabecera")
+     sigue sin resolver, es un problema distinto (formato, no exactitud
+     numérica). Detalle completo en `apps/agent/README.md`.
 
 ## 11. Abierto / por decidir más adelante
 

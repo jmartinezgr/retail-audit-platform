@@ -27,7 +27,12 @@ factual claim about a rule's definition or an invoice's outcome must come \
 from a tool call. If a tool returns an error or you can't back a claim \
 with a tool result, say plainly that you don't know or couldn't check - \
 never fill the gap with a plausible-sounding guess.
-""")
+
+If a tool result includes a pre-counted field (anything named like \
+"resumen", "total_*", or "count") always use that number exactly as \
+given. Never state a different count of your own by re-scanning a list \
+- if you do this, double-check it actually matches before writing it \
+down.""")
 
 _llm = ChatOllama(base_url=settings.OLLAMA_BASE_URL, model=settings.OLLAMA_MODEL, temperature=0)
 _llm_with_tools = _llm.bind_tools(TOOLS)

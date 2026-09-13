@@ -112,6 +112,11 @@ invoice number that doesn't exist, rather than a `404` — the tool checks
 handing it to the model, so a typo'd invoice number doesn't get treated as
 "an invoice with zero data" instead of "not found."
 
+Also adds a pre-computed `resumen` (counts) and a `violaciones` list
+(failing evaluations only) on top of the endpoint's raw response — see
+"Known model limitations" below for why; this wasn't in the original design,
+it's a fix for a real bug found testing this tool against Ollama.
+
 ### `run_rule(rule_id, invoice_id, dataset_id)` — added during Phase 2, not in the original spec
 
 **Why this exists**: the spec's example question — *"run rule R-07 against
@@ -153,23 +158,30 @@ narrating a tool's result — not about the tools or their data:
 - **Aggregation over raw rows is unreliable** (Phase 1, see
   `summarize_dataset` above) — fixed by pre-aggregating server-side instead
   of asking the model to count.
-- **Summarizing a longer already-correct list is not reliably faithful**
+- **Summarizing a longer already-correct list was not reliably faithful**
   (Phase 2, found testing `explain_invoice_result`): asked to summarize an
   invoice with ~20 rule evaluations (only 1 actually failing), the model
   correctly *listed* every rule's real status, then wrote a closing summary
   claiming "4 errors" and describing problems ("discount code issues") that
-  contradicted its own list two lines above — reproduced twice. The same
-  question against `run_rule`'s single-row result (one rule, one invoice)
-  came back clean and accurate both times. Not fixed here — unlike the
-  aggregation case, there's no equivalent "pre-compute it server-side"
-  escape hatch when the ask is genuinely "summarize this specific record's
-  results in prose." Worth trying a stronger model (or a stricter system
-  prompt requiring the model to recompute stated counts against the actual
-  data before answering) before Phase 3, not worth guessing at blind.
-- Both times, the model also ignored an explicit "answer in one sentence" /
-  "only the header rules" instruction and produced the full unfiltered
-  breakdown anyway — an instruction-following gap distinct from the
-  factual-accuracy one above.
+  contradicted its own list two lines above — reproduced twice. Same shape
+  as the aggregation bug, so fixed the same way: `explain_invoice_result`
+  now returns a pre-computed `resumen` (`total_evaluaciones`,
+  `total_fallidas`, `fallidas_error`, `fallidas_warning`) and a `violaciones`
+  list containing only the failing evaluations, instead of leaving the model
+  to derive those numbers from ~20 raw rows itself. The system prompt
+  (`graph.py`) also now explicitly says to use any pre-counted field
+  ("resumen", "total_*") as-is rather than recompute it. Retested the exact
+  question that reproduced the bug: the model now reports "1 fallida, 0
+  advertencias," matching the real data. **Fixed, verified against a real
+  rerun, not just assumed from the code change.**
+- **Still not fixed**: the model ignores an explicit "answer in one
+  sentence" / "only the header rules" instruction and produces the full
+  unfiltered breakdown anyway, even in the retest above — an
+  instruction-following gap, distinct from the factual-accuracy one that's
+  now fixed. No equivalent "pre-compute it" escape hatch applies here since
+  the ask is about response *format*, not the numbers in it; worth trying a
+  stronger model or a firmer system-prompt instruction before Phase 3, not
+  worth guessing at blind.
 
 ## The graph
 

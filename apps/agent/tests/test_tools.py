@@ -151,8 +151,13 @@ def test_explain_invoice_result_returns_full_detail(monkeypatch):
     detail = {
         "facturas": [{"numero_factura": "FAC-1"}],
         "items": [],
-        "evaluaciones_cabecera": [{"regla": "sede_existe", "paso": True}],
-        "evaluaciones_items": [],
+        "evaluaciones_cabecera": [
+            {"regla": "sede_existe", "severidad": "ERROR", "paso": True},
+            {"regla": "factura_total_cuadra", "severidad": "ERROR", "paso": False},
+        ],
+        "evaluaciones_items": [
+            {"regla": "margen_no_negativo", "severidad": "WARNING", "paso": False},
+        ],
         "gold_ready": True,
     }
 
@@ -162,7 +167,18 @@ def test_explain_invoice_result_returns_full_detail(monkeypatch):
 
     monkeypatch.setattr(tools.httpx, "get", fake_get)
     result = tools.explain_invoice_result.func("FAC-1", dataset_id="job-1")
-    assert result == detail
+
+    # el punto de esto: el conteo NO se le deja al modelo, se pre-calcula acá
+    assert result["resumen"] == {
+        "total_evaluaciones": 3,
+        "total_fallidas": 2,
+        "fallidas_error": 1,
+        "fallidas_warning": 1,
+    }
+    assert result["violaciones"] == [
+        {"regla": "factura_total_cuadra", "severidad": "ERROR", "paso": False},
+        {"regla": "margen_no_negativo", "severidad": "WARNING", "paso": False},
+    ]
 
 
 def test_explain_invoice_result_reports_error_when_invoice_not_found(monkeypatch):

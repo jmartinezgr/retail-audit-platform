@@ -189,18 +189,21 @@ def explain_invoice_result(invoice_id: str, dataset_id: str | None = None) -> di
         dataset_id: the upload/job id it belongs to. Omit to use the
             most recently uploaded dataset.
 
-    Returns the invoice's header fields, its line items, and two lists
-    of rule evaluations: `evaluaciones_cabecera` (header-scope rules,
-    one entry per rule) and `evaluaciones_items` (item-scope rules, one
-    entry per rule per line item). Each evaluation is {regla, severidad,
-    paso, mensaje} - `paso: false` is a real violation, `mensaje`
-    explains why in the rule's own words.
+    Returns `resumen` (pre-counted totals: `total_evaluaciones`,
+    `total_fallidas`, `fallidas_error`, `fallidas_warning` - ALWAYS use
+    these numbers as-is, they are already correct; do not recount the
+    lists below yourself, that is how mistakes happen), `violaciones`
+    (only the evaluations that failed, `paso: false` - each is {regla,
+    severidad, item_id, mensaje}, look here first for "why did it
+    fail"), and the full `evaluaciones_cabecera`/`evaluaciones_items`
+    (every rule, including the ones that passed, in case you need to
+    confirm what's fine) plus the invoice's header fields and line
+    items.
 
-    This is the tool for "why did invoice X fail" - it returns every
-    rule result at once, including the ones that passed, so you can
-    also confirm what's fine. These values are from the last time gold
-    was computed for this dataset; if the master catalogs changed since
-    then, use run_rule instead for an up-to-date single-rule check.
+    This is the tool for "why did invoice X fail." These values are from
+    the last time gold was computed for this dataset; if the master
+    catalogs changed since then, use run_rule instead for an up-to-date
+    single-rule check.
 
     Returns {"error": "..."} if the invoice doesn't exist in this
     dataset, if gold hasn't been computed yet, or if the backend can't
@@ -222,6 +225,16 @@ def explain_invoice_result(invoice_id: str, dataset_id: str | None = None) -> di
         return {"error": f"invoice '{invoice_id}' not found in dataset '{dataset_id}'"}
     if not data["gold_ready"]:
         return {"error": f"gold hasn't been computed yet for dataset '{dataset_id}' - process the pipeline first"}
+
+    evaluaciones = data["evaluaciones_cabecera"] + data["evaluaciones_items"]
+    violaciones = [e for e in evaluaciones if not e["paso"]]
+    data["violaciones"] = violaciones
+    data["resumen"] = {
+        "total_evaluaciones": len(evaluaciones),
+        "total_fallidas": len(violaciones),
+        "fallidas_error": sum(1 for e in violaciones if e["severidad"] == "ERROR"),
+        "fallidas_warning": sum(1 for e in violaciones if e["severidad"] == "WARNING"),
+    }
     return data
 
 
