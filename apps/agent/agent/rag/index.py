@@ -1,7 +1,7 @@
 """Indexa las reglas (estáticas + dinámicas) en Qdrant, un chunk por
-regla - ver docs/copilot-spec.md Fase 3 y apps/agent/README.md para por
-qué chunk-por-regla en vez de ventanas de tamaño fijo (las descripciones
-son cortas y autocontenidas).
+regla y por idioma - ver docs/copilot-spec.md Fase 3 y
+apps/agent/README.md para por qué chunk-por-regla en vez de ventanas de
+tamaño fijo, y por qué también en inglés para las estáticas.
 
 Corre offline / bajo demanda, no en cada pregunta del agente:
 
@@ -29,28 +29,41 @@ def _fetch_rules() -> list[dict]:
     return static + dynamic
 
 
-def _chunk_text(regla: dict) -> str:
-    """Un chunk por regla: nombre + qué valida + severidad + ámbito -
-    suficiente contexto para que la búsqueda semántica la encuentre sin
-    necesitar el nombre exacto (a diferencia de get_rule)."""
-    if "descripcion" in regla:  # estática, de packages/domain/.../catalog.py
-        detalle = regla["descripcion"]
-    elif regla["tipo"] == "UMBRAL":
+def _chunks_for_rule(regla: dict) -> list[tuple[str, str]]:
+    """Devuelve [(idioma, texto)] para una regla.
+
+    Una regla estática produce DOS chunks (es/en) - `descripcion_en` en
+    catalog.py es texto real ya escrito para el landing page del
+    frontend, no algo inventado acá para este índice (ver el propio
+    catalog.py). Una regla dinámica produce solo uno (es) - lo que
+    escribió el usuario al crearla no tiene traducción real en ningún
+    lado, no se fabrica una.
+    """
+    if "descripcion" in regla:  # estática
+        sufijo = f"Severity: {regla['severidad']}. Scope: {regla['ambito']}."
+        return [
+            ("es", f"{regla['nombre']}: {regla['descripcion']}. {sufijo}"),
+            ("en", f"{regla['nombre']}: {regla['descripcion_en']}. {sufijo}"),
+        ]
+
+    if regla["tipo"] == "UMBRAL":
         detalle = f"{regla['mensaje']} (condición: {regla['campo']} {regla['operador']} {regla['valor']})"
     else:  # VENTANA_EXCLUSION
         detalle = f"{regla['mensaje']} (sede {regla.get('sede_codigo')}, del {regla.get('fecha_inicio')} al {regla.get('fecha_fin')})"
-    return f"{regla['nombre']}: {detalle}. Severity: {regla['severidad']}. Scope: {regla.get('ambito', 'CABECERA')}."
+    texto = f"{regla['nombre']}: {detalle}. Severity: {regla['severidad']}. Scope: {regla.get('ambito', 'CABECERA')}."
+    return [("es", texto)]
 
 
 def build_index() -> int:
     """Reconstruye el índice completo - idempotente: el id de cada punto
-    es un UUID determinístico derivado del nombre de la regla (Qdrant
-    exige id entero o UUID, no un string cualquiera), así reindexar
-    actualiza en vez de duplicar."""
+    es un UUID determinístico derivado de (nombre, idioma) (Qdrant exige
+    id entero o UUID, no un string cualquiera), así reindexar actualiza
+    en vez de duplicar."""
     reglas = _fetch_rules()
-    embeddings = OllamaEmbeddings(base_url=settings.OLLAMA_BASE_URL, model=settings.OLLAMA_EMBED_MODEL)
+    chunks = [(regla["nombre"], idioma, texto) for regla in reglas for idioma, texto in _chunks_for_rule(regla)]
 
-    textos = [_chunk_text(r) for r in reglas]
+    embeddings = OllamaEmbeddings(base_url=settings.OLLAMA_BASE_URL, model=settings.OLLAMA_EMBED_MODEL)
+    textos = [texto for _, _, texto in chunks]
     vectores = embeddings.embed_documents(textos)
 
     client = QdrantClient(url=settings.QDRANT_URL)
@@ -62,11 +75,11 @@ def build_index() -> int:
 
     points = [
         PointStruct(
-            id=str(uuid.uuid5(uuid.NAMESPACE_DNS, regla["nombre"])),
+            id=str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{nombre}:{idioma}")),
             vector=vector,
-            payload={"nombre": regla["nombre"], "texto": texto},
+            payload={"nombre": nombre, "texto": texto, "idioma": idioma},
         )
-        for regla, texto, vector in zip(reglas, textos, vectores)
+        for (nombre, idioma, texto), vector in zip(chunks, vectores)
     ]
     client.upsert(settings.QDRANT_COLLECTION, points=points)
     return len(points)
@@ -74,4 +87,4 @@ def build_index() -> int:
 
 if __name__ == "__main__":
     n = build_index()
-    print(f"Indexed {n} rules into Qdrant collection '{settings.QDRANT_COLLECTION}'.")
+    print(f"Indexed {n} chunks into Qdrant collection '{settings.QDRANT_COLLECTION}'.")

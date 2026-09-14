@@ -623,12 +623,27 @@ Script Python (Faker + numpy) que:
      (0.738 vs. 0.672 el segundo lugar); en inglés, la regla correcta
      ni siquiera aparecía entre los 3 primeros resultados (scores
      amontonados ~0.47-0.51). `nomic-embed-text` no es fuertemente
-     multilingüe. Mitigado sin re-indexar ni cambiar de modelo: el
-     docstring de la tool instruye al agente a traducir la pregunta al
-     español (idioma del corpus indexado) antes de buscar, con la
-     evidencia medida incluida como justificación. Verificado en vivo:
-     pregunta en inglés → el agente tradujo solo → encontró la regla
-     correcta (`trabajador_pertenece_a_sede`). 19 tests en total.
+     multilingüe. Primer arreglo (barato): el docstring de la tool
+     instruía al agente a traducir la pregunta al español antes de
+     buscar — funcionó (verificado en vivo, el agente tradujo solo y
+     encontró `trabajador_pertenece_a_sede`), pero depende de que el
+     modelo elija traducir siempre.
+   - ✅ Mejora real (2026-09-14, mismo día): la app ya tenía texto real
+     en inglés para las 18 reglas estáticas — las claves `rule.*` de
+     `apps/frontend/src/i18n/translations.ts`, escritas para el landing
+     page, no inventadas para esto. Se copiaron (no se re-tradujeron) a
+     un campo nuevo `descripcion_en` en `catalog.py`, expuesto por
+     `GET /rules/static`, e `index.py` ahora indexa **ambos** idiomas
+     por regla estática (39 puntos: 18×2 + 3 dinámicas, que siguen solo
+     en español — no hay traducción real de lo que escribió un usuario,
+     no se fabrica una). Re-corridas las mismas 2 preguntas en inglés
+     que antes fallaban, sin ningún paso de traducción: ahora ambas
+     aciertan la regla correcta en el puesto #1, con margen de score
+     limpio (0.658 vs. 0.54; 0.683 vs. 0.641) — igual de bien que en
+     español, no solo "aceptable". La tool también deduplica resultados
+     por nombre de regla (pide `k*3` candidatos, se queda con el de
+     mejor score por regla), ya que una regla estática ahora puede
+     matchear por cualquiera de sus dos chunks. 20 tests en total.
      Detalle completo en `apps/agent/README.md`.
 
 ## 11. Abierto / por decidir más adelante

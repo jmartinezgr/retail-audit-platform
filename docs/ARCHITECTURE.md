@@ -932,5 +932,22 @@ React y no puede llamar a `useI18n()`.
   español (idioma del corpus) antes de buscar, con la evidencia medida
   como justificación explícita, no una instrucción sin motivo. Verificado
   en vivo: pregunta en inglés → el agente tradujo solo → encontró la
-  regla correcta. Detalle completo, incluyendo los scores medidos de
-  cada prueba, en `apps/agent/README.md`.
+  regla correcta.
+- **2026-09-14**: mejora sobre lo anterior — en vez de solo pedirle al
+  agente que traduzca, `packages/domain/.../catalog.py`'s
+  `DescripcionRegla` ganó un campo `descripcion_en` (texto real copiado
+  de `apps/frontend/src/i18n/translations.ts`'s claves `rule.*`, ya
+  escritas para el landing page — no traducidas de nuevo para esto),
+  expuesto por `GET /rules/static` (`StaticRuleResponse.descripcion_en`
+  nuevo). `agent/rag/index.py` ahora indexa un chunk por regla **y por
+  idioma** para las 18 estáticas (id de cada punto:
+  `uuid.uuid5(NAMESPACE_DNS, f"{nombre}:{idioma}")` en vez de solo
+  `nombre`) — 39 puntos en vez de 21 (18×2 + 3 dinámicas, que siguen
+  solo en español, no hay traducción real de esas). `search_rule_docs`
+  ahora pide `k*3` candidatos y deduplica por nombre de regla (se queda
+  con el de mejor score), porque una regla estática puede matchear por
+  cualquiera de sus dos chunks. Re-verificadas las mismas 2 preguntas en
+  inglés que antes fallaban, sin ningún paso de traducción: ambas
+  aciertan la regla correcta en el puesto #1 ahora, con margen de score
+  limpio. Detalle completo, incluyendo todos los scores medidos, en
+  `apps/agent/README.md`.

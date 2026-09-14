@@ -9,3 +9,8 @@ def test_catalogo_cubre_las_18_reglas_estaticas():
 def test_cada_entrada_tiene_descripcion_no_vacia():
     for descripcion in CATALOGO_REGLAS_ESTATICAS.values():
         assert descripcion.descripcion.strip()
+
+
+def test_cada_entrada_tiene_descripcion_en_ingles_no_vacia():
+    for descripcion in CATALOGO_REGLAS_ESTATICAS.values():
+        assert descripcion.descripcion_en.strip()

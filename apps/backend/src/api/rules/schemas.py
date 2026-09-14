@@ -76,6 +76,7 @@ class StaticRuleResponse(BaseModel):
     ambito: str
     origen: str
     descripcion: str
+    descripcion_en: str
 
 
 class FieldOption(BaseModel):

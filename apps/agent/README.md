@@ -165,38 +165,55 @@ know it — "is there a rule about discount limits on clothing" instead of
 agent.rag.index` — not on every question): fetches all 21 rules (18
 built-in via `GET /rules/static`, plus whatever's in `GET /rules/` — same
 HTTP-to-backend pattern as every other tool, not a second way of reading
-rule data), builds **one chunk per rule** (name + description + severity +
-scope — chosen over fixed-size windows because each rule's description is
-already short and self-contained; splitting it further would only
-fragment it for no benefit), embeds each chunk with `nomic-embed-text` via
-Ollama (274MB, local, no API key, consistent with using Ollama for the
-chat model too), and upserts into a Qdrant collection. Re-running
-the script updates in place rather than duplicating — each point's ID is
-a UUID deterministically derived from the rule's name
-(`uuid.uuid5(uuid.NAMESPACE_DNS, nombre)`; Qdrant requires an int or UUID
-for point IDs, not an arbitrary string).
+rule data), builds **one chunk per rule per language** (name + description
++ severity + scope — chosen over fixed-size windows because each rule's
+description is already short and self-contained; splitting it further
+would only fragment it for no benefit), embeds each chunk with
+`nomic-embed-text` via Ollama (274MB, local, no API key, consistent with
+using Ollama for the chat model too), and upserts into a Qdrant
+collection (39 points: 18 built-in rules × 2 languages + 3 dynamic × 1).
+Re-running the script updates in place rather than duplicating — each
+point's ID is a UUID deterministically derived from `(nombre, idioma)`
+(`uuid.uuid5(uuid.NAMESPACE_DNS, f"{nombre}:{idioma}")`; Qdrant requires
+an int or UUID for point IDs, not an arbitrary string).
 
 **A real, measured finding, not assumed**: search quality is sharply
-language-dependent. The rule descriptions are indexed in Spanish. Querying
-in Spanish (`"regla que verifica que el trabajador pertenezca a la sede
-correcta"`) returned the correct rule first with a clear score gap (0.738
-vs. 0.672 for 2nd place). The *same question in English* ("checks if a
-worker belongs to the right store") returned three *wrong* rules, scores
-clustered tightly around 0.47 — the correct rule wasn't even in the top 3.
-Reproduced on a second query pair (date-related) with the same pattern.
-`nomic-embed-text` isn't strongly cross-lingual; an English query against
-a Spanish corpus doesn't reliably land near the right vectors.
+language-dependent. First version indexed rule descriptions in Spanish
+only. Querying in Spanish (`"regla que verifica que el trabajador
+pertenezca a la sede correcta"`) returned the correct rule first with a
+clear score gap (0.738 vs. 0.672 for 2nd place). The *same question in
+English* ("checks if a worker belongs to the right store") returned three
+*wrong* rules, scores clustered tightly around 0.47 — the correct rule
+wasn't even in the top 3. Reproduced on a second query pair (date-related)
+with the same pattern. `nomic-embed-text` isn't strongly cross-lingual; an
+English query against a Spanish-only corpus doesn't reliably land near
+the right vectors.
 
-**Mitigation, not a rebuild**: rather than re-indexing in English (the
-domain data and the rest of the codebase are Spanish-first by convention)
-or swapping embedding models (untested, no measured need yet),
-`search_rule_docs`'s docstring instructs the model to translate the query
-to Spanish itself before searching, with the measured scores from above
-included as evidence, not just an unexplained instruction. Verified
-working end to end: asked in English ("Is there a rule that checks
-whether a worker belongs to the correct store?"), the agent answered
-`trabajador_pertenece_a_sede` correctly — it translated the query before
-calling the tool, matching the pattern the docstring asked for.
+**First fix, a cheap mitigation**: rather than touching the index,
+`search_rule_docs`'s docstring instructed the model to translate the
+query to Spanish itself before searching, with the measured scores
+included as evidence. This worked — verified end to end, asked in
+English, the agent translated on its own and found the right rule — but
+it depends on the model reliably choosing to translate every time, and it
+does nothing for a corpus that's genuinely meant to be read in both
+languages by a real user (the app itself has an ES/EN toggle).
+
+**Better fix, once it was worth the extra work**: the app already had
+real English text for all 18 built-in rules — `apps/frontend/src/i18n/
+translations.ts`'s `rule.*` keys, written for the landing page, not
+invented for this. Copied (not re-translated) into a new
+`descripcion_en` field on `packages/domain/.../catalog.py`'s
+`DescripcionRegla` (exposed via `GET /rules/static`), and `index.py` now
+indexes **both** languages per built-in rule. User-defined rules stay
+Spanish-only — there's no real English text for what a user typed
+creating one, so none was fabricated. Re-ran the exact two English
+queries that originally failed, without any translation step: both now
+return the correct rule *first*, with a clean score gap (0.658 vs. 0.54;
+0.683 vs. 0.641) — matching the quality Spanish queries already had, not
+just "good enough." `search_rule_docs` also now deduplicates results by
+rule name (querying `k * 3` candidates and keeping the best-scoring chunk
+per rule), since a built-in rule can now match on either of its two
+indexed chunks and shouldn't take two slots in the same result list.
 
 ## Known model limitations (not tool bugs)
 
@@ -327,9 +344,9 @@ by design, see "Architecture" above.
 python -m pytest -v
 ```
 
-19 tests: unit tests for all six tools (backend mocked at the `httpx`
+20 tests: unit tests for all six tools (backend mocked at the `httpx`
 boundary, Qdrant/embeddings mocked for `search_rule_docs` — same standard
-as `packages/domain`'s 99 tests), plus two graph integration tests with
+as `packages/domain`'s 100 tests), plus two graph integration tests with
 the LLM itself scripted — asserting on the tool-call
 sequence and message shape (`test_graph_calls_tool_then_answers`), and on
 the step cap producing a partial answer instead of hanging
