@@ -951,3 +951,21 @@ React y no puede llamar a `useI18n()`.
   aciertan la regla correcta en el puesto #1 ahora, con margen de score
   limpio. Detalle completo, incluyendo todos los scores medidos, en
   `apps/agent/README.md`.
+- **2026-09-14**: Fase 4 del agente — `apps/agent/agent/mcp_server.py`,
+  las mismas 6 tools de `tools.py` registradas bajo MCP en vez de
+  LangGraph ("una definición, dos consumidores" - se registra
+  `tool.func`/`.name`/`.description` de cada objeto `@tool` ya existente,
+  ninguna tool se reescribe). Sorpresa de versión real, cazada antes de
+  escribir código (misma lección que LangChain/LangGraph antes en este
+  proyecto): `mcp` 2.x renombró `FastMCP` a `MCPServer`
+  (`mcp.server.mcpserver`, no `mcp.server.fastmcp` como en la mayoría de
+  tutoriales/ejemplos, escritos contra `mcp` 1.x) - el propio paquete lo
+  informa en el mensaje de `ModuleNotFoundError` si usas el import
+  viejo. Verificado con un cliente MCP real, no solo un import: un
+  script con `mcp.client.stdio.stdio_client` + `ClientSession` conectó
+  al servidor, listó las 6 tools, y llamó `get_rule` de verdad
+  (resultado real del backend, no un mock). `tests/test_mcp_server.py`
+  cubre que el registro incluye las 6 tools con nombre/descripción
+  correctos, sin necesitar un subproceso vivo por corrida de tests. Con
+  esto, las 4 fases de `docs/copilot-spec.md` quedan completas en la
+  rama `feature/agent-copilot` (sin mergear a `main`).

@@ -1,11 +1,12 @@
-# AuditLake Copilot — Phases 1, 2 & 3
+# AuditLake Copilot — Phases 1, 2, 3 & 4
 
 A conversational agent over AuditLake's audit pipeline, built with LangGraph.
 Full spec and rationale for the whole 4-phase plan: [`docs/copilot-spec.md`](../../docs/copilot-spec.md).
 Covers Phase 1 (minimum viable agent, plus one tool added beyond the
 original spec), Phase 2 (explaining why an invoice failed, plus one tool
-added there too), and Phase 3 (semantic search over rule docs with
-Qdrant) — all explained below, with the real evidence that made each
+added there too), Phase 3 (semantic search over rule docs with Qdrant,
+indexed in both Spanish and English), and Phase 4 (the same tools over
+MCP) — all explained below, with the real evidence that made each
 addition (or fix) necessary.
 
 ## What it does
@@ -48,6 +49,8 @@ agent/
     retrieve.py search_rule_docs, wired into tools.TOOLS
   graph.py      the StateGraph: agent -> tools -> agent -> ... -> finalize/end
   __main__.py   `python -m agent "question"`
+  mcp_server.py the same tools.TOOLS, registered under MCP instead of
+                LangGraph - `python -m agent.mcp_server`
 ```
 
 `agent -> tools` is the *only* dependency direction that matters here:
@@ -316,6 +319,58 @@ for reducing it later would be trimming tool docstrings/schemas rather than
 the system prompt, since the docstrings are what feeds the model's picture
 of what each tool does.
 
+## MCP server — Phase 4
+
+`mcp_server.py` registers the exact same `tools.TOOLS` functions under the
+[Model Context Protocol](https://modelcontextprotocol.io/) instead of
+LangGraph — "one definition, two consumers" (`docs/copilot-spec.md`'s own
+wording for this phase): if a tool's behavior changes in `tools.py`, both
+the LangGraph agent and the MCP server see the change automatically,
+there's nothing to keep in sync by hand. Uses `mcp.server.mcpserver.
+MCPServer.add_tool(fn, name=..., description=...)`, registering each
+tool's already-existing `.func` (the raw callable), `.name`, and
+`.description` straight from the LangChain `@tool` objects — no tool gets
+redefined a second time.
+
+**A real version gotcha, caught before writing any code**: `mcp` 2.x
+renamed `FastMCP` to `MCPServer` and moved it to `mcp.server.mcpserver` -
+the old `from mcp.server.fastmcp import FastMCP` (still the example in
+most tutorials, written against `mcp` 1.x) raises `ModuleNotFoundError`
+with the new package's own migration message pointing at the rename.
+Checked the actually-installed API (`dir(MCPServer)`, `inspect.signature`)
+before writing `mcp_server.py`, same lesson as the LangChain/LangGraph
+version surprise earlier in this project - a training-data API and an
+installed package's real API aren't the same thing, verify before coding.
+
+**Verified with a real MCP client, not just an import check**: wrote a
+throwaway script using `mcp.client.stdio.stdio_client` +
+`mcp.ClientSession` to connect to `mcp_server.py` as a real client would,
+called `session.list_tools()` (got back all 6, correct names) and
+`session.call_tool("get_rule", {"rule_id": "sede_existe"})` (got back the
+real rule definition, not a mock). `tests/test_mcp_server.py` covers the
+registration itself (all 6 tools present, names and descriptions match
+`tools.TOOLS`) without needing a live subprocess per test run.
+
+**Connecting a real local MCP client** (e.g. Claude Desktop, Claude
+Code): add to the client's MCP server config (for Claude Desktop,
+`claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "auditlake-copilot": {
+      "command": "C:\\path\\to\\apps\\agent\\venv\\Scripts\\python.exe",
+      "args": ["-m", "agent.mcp_server"],
+      "cwd": "C:\\path\\to\\apps\\agent"
+    }
+  }
+}
+```
+
+Requires the backend running, same as the LangGraph agent (see
+"Architecture" above) - the tools are unchanged, still HTTP calls to
+`apps/backend`.
+
 ## Setup
 
 ```bash
@@ -344,10 +399,13 @@ by design, see "Architecture" above.
 python -m pytest -v
 ```
 
-20 tests: unit tests for all six tools (backend mocked at the `httpx`
+21 tests: unit tests for all six tools (backend mocked at the `httpx`
 boundary, Qdrant/embeddings mocked for `search_rule_docs` — same standard
-as `packages/domain`'s 100 tests), plus two graph integration tests with
-the LLM itself scripted — asserting on the tool-call
+as `packages/domain`'s 100 tests), the MCP server's tool registration
+(`test_mcp_server.py`, verifies the same 6 tools/names/descriptions are
+exposed — the actual protocol round-trip was verified by hand with a
+real MCP client, see "MCP server" above), plus two graph integration
+tests with the LLM itself scripted — asserting on the tool-call
 sequence and message shape (`test_graph_calls_tool_then_answers`), and on
 the step cap producing a partial answer instead of hanging
 (`test_graph_stops_at_step_cap_with_a_partial_answer`) — never on a real

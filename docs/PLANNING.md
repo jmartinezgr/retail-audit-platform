@@ -645,6 +645,29 @@ Script Python (Faker + numpy) que:
      mejor score por regla), ya que una regla estática ahora puede
      matchear por cualquiera de sus dos chunks. 20 tests en total.
      Detalle completo en `apps/agent/README.md`.
+   - ✅ Fase 4 del spec (2026-09-14, mismo día): `apps/agent/agent/
+     mcp_server.py` — las mismas 6 tools de `tools.py`, registradas bajo
+     el protocolo MCP en vez de LangGraph ("una definición, dos
+     consumidores", como pide el spec). No se reescribió ninguna tool:
+     se registra `tool.func`/`.name`/`.description` de cada objeto
+     `@tool` de LangChain ya existente. Sorpresa de versión real, cazada
+     antes de escribir código (misma lección que con LangChain/
+     LangGraph): `mcp` 2.x renombró `FastMCP` a `MCPServer` y lo movió a
+     `mcp.server.mcpserver` - el paquete mismo lo dice en el mensaje de
+     error si usas el import viejo de los tutoriales. Verificado con un
+     cliente MCP real (no solo import): un script con
+     `mcp.client.stdio.stdio_client` + `ClientSession` listó las 6 tools
+     y llamó `get_rule` de verdad, resultado correcto. 21 tests en
+     total. Detalle completo, incluyendo cómo conectar un cliente MCP
+     real (ej. Claude Desktop), en `apps/agent/README.md`.
+
+**Con esto, las 4 fases del spec original (`docs/copilot-spec.md`)
+quedan completas**, en la rama `feature/agent-copilot` (sin mergear a
+`main` todavía). Además de lo pedido, se agregaron 3 tools que el spec
+no tenía (`summarize_dataset`, y las 2 de la Fase 2 contaban como
+"nuevas" oficialmente) y 2 mejoras encontradas probando en vivo, no
+asumidas (el `resumen` pre-calculado, y el índice bilingüe) - cada una
+con su evidencia medida documentada en `apps/agent/README.md`.
 
 ## 11. Abierto / por decidir más adelante
 
