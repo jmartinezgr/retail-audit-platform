@@ -907,3 +907,30 @@ React y no puede llamar a `useI18n()`.
   cobertura, mismos casos, solo cambió dónde viven. Cero cambios de
   comportamiento, solo de ubicación e imports (`from src.domain...` →
   `from domain...` en los ~20 archivos que lo consumían).
+- **2026-09-13**: `explain_invoice_result` (agente, Fase 2) ahora
+  devuelve `resumen` (conteos pre-calculados) y `violaciones` (solo lo
+  que falló) en vez de solo las listas crudas — arregla el límite de
+  fidelidad al resumir documentado en el commit anterior. Mismo patrón
+  que ya había funcionado para `summarize_dataset`: no pedirle al
+  modelo que derive un número de una lista, dárselo directo. System
+  prompt (`agent/graph.py`) reforzado para usar cualquier campo
+  pre-contado tal cual. Verificado re-corriendo la pregunta exacta que
+  reproducía el bug contra Ollama real — el conteo ahora coincide.
+- **2026-09-14**: Fase 3 del agente — `agent/rag/` (`index.py`,
+  `retrieve.py`), búsqueda semántica sobre las 21 reglas (18 estáticas +
+  dinámicas) con Qdrant (Docker, aparte del `docker-compose.yml`
+  principal del proyecto) + `nomic-embed-text` vía Ollama, expuesta como
+  la tool `search_rule_docs`. Un chunk por regla, no ventanas de tamaño
+  fijo (decisión del spec, confirmada al usarla — las descripciones ya
+  son cortas y autocontenidas). Hallazgo real, medido probando en vivo,
+  no asumido: la búsqueda es muy sensible al idioma — mismo par de
+  preguntas, en español la regla correcta salió primera con margen claro
+  de score (0.738 vs. 0.672), en inglés ni siquiera aparecía entre los 3
+  primeros (scores amontonados ~0.47-0.51) — `nomic-embed-text` no es
+  fuertemente multilingüe. Mitigado sin re-indexar ni cambiar de modelo:
+  el docstring de `search_rule_docs` instruye traducir la pregunta al
+  español (idioma del corpus) antes de buscar, con la evidencia medida
+  como justificación explícita, no una instrucción sin motivo. Verificado
+  en vivo: pregunta en inglés → el agente tradujo solo → encontró la
+  regla correcta. Detalle completo, incluyendo los scores medidos de
+  cada prueba, en `apps/agent/README.md`.

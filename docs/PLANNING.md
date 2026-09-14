@@ -610,6 +610,26 @@ Script Python (Faker + numpy) que:
      seguimiento de instrucciones (ignorar "una frase"/"solo cabecera")
      sigue sin resolver, es un problema distinto (formato, no exactitud
      numérica). Detalle completo en `apps/agent/README.md`.
+   - ✅ Fase 3 del spec (2026-09-14): **6 tools** — `search_rule_docs`,
+     búsqueda semántica con Qdrant (corriendo en Docker aparte del
+     `docker-compose.yml` principal) + embeddings de `nomic-embed-text`
+     vía Ollama (todo local, sin API key). Indexa un chunk por regla
+     (las 21: 18 estáticas + dinámicas), decisión ya tomada en el spec
+     y confirmada al usarlo: las descripciones son cortas y
+     autocontenidas, ventanas de tamaño fijo solo las fragmentarían sin
+     necesidad. **Hallazgo real medido, no asumido**: la búsqueda es
+     muy sensible al idioma — la misma pregunta en español acertó la
+     regla correcta en el puesto #1 con un margen de score claro
+     (0.738 vs. 0.672 el segundo lugar); en inglés, la regla correcta
+     ni siquiera aparecía entre los 3 primeros resultados (scores
+     amontonados ~0.47-0.51). `nomic-embed-text` no es fuertemente
+     multilingüe. Mitigado sin re-indexar ni cambiar de modelo: el
+     docstring de la tool instruye al agente a traducir la pregunta al
+     español (idioma del corpus indexado) antes de buscar, con la
+     evidencia medida incluida como justificación. Verificado en vivo:
+     pregunta en inglés → el agente tradujo solo → encontró la regla
+     correcta (`trabajador_pertenece_a_sede`). 19 tests en total.
+     Detalle completo en `apps/agent/README.md`.
 
 ## 11. Abierto / por decidir más adelante
 

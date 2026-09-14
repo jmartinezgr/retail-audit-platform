@@ -10,6 +10,7 @@ para decidir cuándo y cómo llamar la tool."""
 import httpx
 from langchain_core.tools import tool
 
+from agent.rag.retrieve import search_rule_docs
 from agent.settings import settings
 
 
@@ -286,4 +287,4 @@ def run_rule(rule_id: str, invoice_id: str, dataset_id: str | None = None) -> li
         return [{"error": f"couldn't reach the backend: {e}"}]
 
 
-TOOLS = [get_rule, query_gold_results, summarize_dataset, explain_invoice_result, run_rule]
+TOOLS = [get_rule, query_gold_results, summarize_dataset, explain_invoice_result, run_rule, search_rule_docs]

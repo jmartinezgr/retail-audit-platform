@@ -9,6 +9,13 @@ class Settings(BaseSettings):
 
     OLLAMA_BASE_URL: str = "http://localhost:11434"
     OLLAMA_MODEL: str = "qwen2.5:7b"
+    OLLAMA_EMBED_MODEL: str = "nomic-embed-text"
+
+    # Fase 3 (RAG) - Qdrant corre aparte del docker-compose principal del
+    # proyecto (ver apps/agent/README.md), colección propia para no
+    # mezclarse con nada de otro proyecto que use la misma instancia.
+    QDRANT_URL: str = "http://localhost:6333"
+    QDRANT_COLLECTION: str = "auditlake_rules"
 
     # Tope de iteraciones agente<->tools antes de forzar una respuesta
     # parcial en vez de seguir loopeando (ver docs/copilot-spec.md,

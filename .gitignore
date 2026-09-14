@@ -17,6 +17,9 @@ dist/
 # Playwright MCP (browser-testing snapshots, not project output)
 .playwright-mcp/
 
+# Qdrant local storage (apps/agent RAG index - rebuild with python -m agent.rag.index)
+qdrant_storage/
+
 # OS
 .DS_Store
 Thumbs.db

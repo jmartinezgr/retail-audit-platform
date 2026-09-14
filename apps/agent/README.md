@@ -1,11 +1,12 @@
-# AuditLake Copilot — Phases 1 & 2
+# AuditLake Copilot — Phases 1, 2 & 3
 
 A conversational agent over AuditLake's audit pipeline, built with LangGraph.
 Full spec and rationale for the whole 4-phase plan: [`docs/copilot-spec.md`](../../docs/copilot-spec.md).
 Covers Phase 1 (minimum viable agent, plus one tool added beyond the
-original spec) and Phase 2 (explaining why an invoice failed, plus one
-tool added there too) — both explained below, with the real evidence
-that made each addition necessary.
+original spec), Phase 2 (explaining why an invoice failed, plus one tool
+added there too), and Phase 3 (semantic search over rule docs with
+Qdrant) — all explained below, with the real evidence that made each
+addition (or fix) necessary.
 
 ## What it does
 
@@ -38,9 +39,13 @@ stop, instead of that logic being scattered through a manual loop.
 
 ```
 agent/
-  settings.py   backend URL, Ollama config, MAX_STEPS
+  settings.py   backend URL, Ollama config, Qdrant config, MAX_STEPS
   state.py      AgentState: messages (reducer: add_messages) + step_count
-  tools.py      get_rule, query_gold_results, summarize_dataset
+  tools.py      get_rule, query_gold_results, summarize_dataset,
+                explain_invoice_result, run_rule (+ search_rule_docs, below)
+  rag/
+    index.py    builds the Qdrant index - `python -m agent.rag.index`
+    retrieve.py search_rule_docs, wired into tools.TOOLS
   graph.py      the StateGraph: agent -> tools -> agent -> ... -> finalize/end
   __main__.py   `python -m agent "question"`
 ```
@@ -149,6 +154,49 @@ dicts — it keeps Delta's real schema (a nullable Utf8 column stays Utf8
 regardless of which values happen to be null in a given subset). Lesson:
 "convert to dicts and back" is not a neutral operation for a typed data
 pipeline, even when it looks like one.
+
+### `search_rule_docs(query, k)` — Phase 3, semantic search with Qdrant
+
+`get_rule` needs the rule's exact name. This is for when the user doesn't
+know it — "is there a rule about discount limits on clothing" instead of
+"what does descuento_maximo_ropa check."
+
+**Indexing** (`agent/rag/index.py`, run offline/on-demand — `python -m
+agent.rag.index` — not on every question): fetches all 21 rules (18
+built-in via `GET /rules/static`, plus whatever's in `GET /rules/` — same
+HTTP-to-backend pattern as every other tool, not a second way of reading
+rule data), builds **one chunk per rule** (name + description + severity +
+scope — chosen over fixed-size windows because each rule's description is
+already short and self-contained; splitting it further would only
+fragment it for no benefit), embeds each chunk with `nomic-embed-text` via
+Ollama (274MB, local, no API key, consistent with using Ollama for the
+chat model too), and upserts into a Qdrant collection. Re-running
+the script updates in place rather than duplicating — each point's ID is
+a UUID deterministically derived from the rule's name
+(`uuid.uuid5(uuid.NAMESPACE_DNS, nombre)`; Qdrant requires an int or UUID
+for point IDs, not an arbitrary string).
+
+**A real, measured finding, not assumed**: search quality is sharply
+language-dependent. The rule descriptions are indexed in Spanish. Querying
+in Spanish (`"regla que verifica que el trabajador pertenezca a la sede
+correcta"`) returned the correct rule first with a clear score gap (0.738
+vs. 0.672 for 2nd place). The *same question in English* ("checks if a
+worker belongs to the right store") returned three *wrong* rules, scores
+clustered tightly around 0.47 — the correct rule wasn't even in the top 3.
+Reproduced on a second query pair (date-related) with the same pattern.
+`nomic-embed-text` isn't strongly cross-lingual; an English query against
+a Spanish corpus doesn't reliably land near the right vectors.
+
+**Mitigation, not a rebuild**: rather than re-indexing in English (the
+domain data and the rest of the codebase are Spanish-first by convention)
+or swapping embedding models (untested, no measured need yet),
+`search_rule_docs`'s docstring instructs the model to translate the query
+to Spanish itself before searching, with the measured scores from above
+included as evidence, not just an unexplained instruction. Verified
+working end to end: asked in English ("Is there a rule that checks
+whether a worker belongs to the correct store?"), the agent answered
+`trabajador_pertenece_a_sede` correctly — it translated the query before
+calling the tool, matching the pattern the docstring asked for.
 
 ## Known model limitations (not tool bugs)
 
@@ -260,7 +308,12 @@ pip install -r requirements.txt
 copy .env.example .env                          # BACKEND_BASE_URL defaults to localhost:8000
 
 ollama pull qwen2.5:7b                          # confirmed to support real tool-calling, not just prose
+ollama pull nomic-embed-text                    # embeddings for Phase 3's search_rule_docs
 ollama serve                                    # if not already running
+
+docker run -d --name qdrant -p 6333:6333 -p 6334:6334 \
+  -v "$(pwd)/qdrant_storage:/qdrant/storage" qdrant/qdrant
+python -m agent.rag.index                       # builds the search index - run once, or after rules change
 
 python -m agent "your question here"
 ```
@@ -274,9 +327,10 @@ by design, see "Architecture" above.
 python -m pytest -v
 ```
 
-17 tests: unit tests for all five tools (backend mocked at the `httpx`
-boundary, same standard as `packages/domain`'s 99 tests), plus two graph
-integration tests with the LLM itself scripted — asserting on the tool-call
+19 tests: unit tests for all six tools (backend mocked at the `httpx`
+boundary, Qdrant/embeddings mocked for `search_rule_docs` — same standard
+as `packages/domain`'s 99 tests), plus two graph integration tests with
+the LLM itself scripted — asserting on the tool-call
 sequence and message shape (`test_graph_calls_tool_then_answers`), and on
 the step cap producing a partial answer instead of hanging
 (`test_graph_stops_at_step_cap_with_a_partial_answer`) — never on a real
