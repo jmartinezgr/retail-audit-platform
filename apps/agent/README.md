@@ -416,6 +416,11 @@ arguments. The frontend's `/app/copilot` page is a minimal chat built on
 that endpoint, with the tool-call trace shown as a collapsed detail per
 answer.
 
+![Copilot chat UI](../../docs/screenshots/copilot.png)
+*A real run: "why did invoice FAC-0000010 fail?", answered from
+`explain_invoice_result`'s actual output - the expanded trace below the
+answer shows the exact tool call and raw result, not a mocked example.*
+
 This is a third consumer of `tools.py`/`graph.py`, same principle as
 MCP - "one definition, three consumers" by this point. It's still a
 local-only demo: the backend imports `agent.graph` by adding

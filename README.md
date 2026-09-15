@@ -42,6 +42,9 @@ On top of those 18, the `/app/rules` screen lets you define your own — a thres
 
 This is a local-only demo: it needs Ollama and Qdrant running on the same machine as the backend, so it isn't wired up on the deployed Render instance. Full build rationale (why LangGraph, why tools call the backend over HTTP instead of importing `infrastructure/` directly, measured token cost, known model limitations, the RAG design over rule docs) lives in [`apps/agent/README.md`](apps/agent/README.md).
 
+![Copilot](docs/screenshots/copilot.png)
+*A real answer to "why did invoice FAC-0000010 fail?", with the exact tool call it used (`explain_invoice_result`, arguments and raw result) shown in the expandable trace below it.*
+
 ## Screenshots
 
 | | |
