@@ -1,4 +1,14 @@
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Ruta absoluta al .env de apps/agent, no relativa al cwd del proceso -
+# cuando el backend importa este módulo para exponer /agent/ask (ver
+# apps/backend/src/api/agent/service.py), el cwd real es apps/backend,
+# cuyo propio .env (otras claves: DATABASE_URL, S3_*, etc.) rompía la
+# carga de esta Settings con "extra inputs not permitted" (visto en
+# pruebas reales del endpoint).
+_ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
 
 
 class Settings(BaseSettings):
@@ -22,7 +32,7 @@ class Settings(BaseSettings):
     # restricción #4).
     MAX_STEPS: int = 8
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    model_config = SettingsConfigDict(env_file=_ENV_FILE, env_file_encoding="utf-8")
 
 
 settings = Settings()

@@ -7,7 +7,10 @@ original spec), Phase 2 (explaining why an invoice failed, plus one tool
 added there too), Phase 3 (semantic search over rule docs with Qdrant,
 indexed in both Spanish and English), and Phase 4 (the same tools over
 MCP) — all explained below, with the real evidence that made each
-addition (or fix) necessary.
+addition (or fix) necessary. Beyond the spec's 4 phases, there's also a
+minimal chat UI in the main frontend (`/app/copilot`) backed by a new
+`POST /agent/ask` on the backend — see "Chat UI — a third consumer"
+below.
 
 ## What it does
 
@@ -250,6 +253,18 @@ narrating a tool's result — not about the tools or their data:
   the ask is about response *format*, not the numbers in it; worth trying a
   stronger model or a firmer system-prompt instruction before Phase 3, not
   worth guessing at blind.
+- **Cross-checked with a stronger model, same tool, same data**: asked "which
+  rules failed most" through Claude Desktop over the MCP server (Phase 4) -
+  same `summarize_dataset` call, same already-sorted `reglas` list
+  (`[7, 4, 3, 3, 2]` facturas_afectadas). Claude read the list top to bottom
+  and reported it in the correct order; `qwen2.5:7b` (the LangGraph agent's
+  own model, asked the equivalent question through `/app/copilot`) reordered
+  two entries with the same count incorrectly despite the identical
+  pre-sorted input and the identical system-prompt instruction not to
+  re-sort it. Confirms this is a small-model instruction-following ceiling,
+  not a bug in `summarize_dataset` or in how the data is prepared - the tool
+  layer is doing its job correctly regardless of which model reads its
+  output.
 
 ## The graph
 
@@ -353,7 +368,11 @@ registration itself (all 6 tools present, names and descriptions match
 
 **Connecting a real local MCP client** (e.g. Claude Desktop, Claude
 Code): add to the client's MCP server config (for Claude Desktop,
-`claude_desktop_config.json`):
+`claude_desktop_config.json`). Use `env.PYTHONPATH` pointing at
+`apps/agent`, not a `cwd` field - same reasoning as the `-e
+PYTHONPATH=...` workaround used for `claude mcp add` above, and it
+sidesteps having to confirm whether a given client's config schema even
+honors `cwd` for stdio servers:
 
 ```json
 {
@@ -361,15 +380,68 @@ Code): add to the client's MCP server config (for Claude Desktop,
     "auditlake-copilot": {
       "command": "C:\\path\\to\\apps\\agent\\venv\\Scripts\\python.exe",
       "args": ["-m", "agent.mcp_server"],
-      "cwd": "C:\\path\\to\\apps\\agent"
+      "env": {
+        "PYTHONPATH": "C:\\path\\to\\apps\\agent"
+      }
     }
   }
 }
 ```
 
+**Finding `claude_desktop_config.json` on a Microsoft Store (MSIX)
+install of Claude Desktop**: it is not at the usual
+`%APPDATA%\Claude\claude_desktop_config.json` - MSIX apps get a
+virtualized filesystem, so it actually lives under
+`%LOCALAPPDATA%\Packages\<Claude package id>\LocalCache\Roaming\Claude\
+claude_desktop_config.json` (the package id is a fixed per-install
+string, e.g. `Claude_pzs8sxrjxfjjc` - find it with `dir
+%LOCALAPPDATA%\Packages | findstr Claude`). Verified: the file starts
+with no `mcpServers` key at all on a fresh install (just `preferences`
+and `coworkUserFilesPath`) - it's a plain key to add, not one to merge
+carefully into an existing block.
+
 Requires the backend running, same as the LangGraph agent (see
 "Architecture" above) - the tools are unchanged, still HTTP calls to
 `apps/backend`.
+
+## Chat UI — a third consumer, over HTTP
+
+The CLI and the MCP server aren't the only front-ends: `apps/backend`
+exposes `POST /agent/ask` (`apps/backend/src/api/agent/`), which runs
+this same `build_graph()` and returns `{answer, tool_calls}` - the
+`tool_calls` list is extracted straight from the graph's final state
+(`AIMessage.tool_calls` matched to their `ToolMessage` results), not
+free text, so the frontend can show exactly which tool ran with which
+arguments. The frontend's `/app/copilot` page is a minimal chat built on
+that endpoint, with the tool-call trace shown as a collapsed detail per
+answer.
+
+This is a third consumer of `tools.py`/`graph.py`, same principle as
+MCP - "one definition, three consumers" by this point. It's still a
+local-only demo: the backend imports `agent.graph` by adding
+`apps/agent` to `sys.path` at request time (same trick as connecting an
+MCP client without a `--cwd` flag, see above), so Render's deployed
+backend doesn't need `langgraph`/`qdrant-client`/etc. installed unless
+someone actually uses the chat - it returns a 503 with a readable
+message if the import fails or if Ollama/Qdrant aren't reachable when
+the graph actually runs. To use it locally: install this app's
+`requirements.txt` into the backend's own venv too
+(`apps/backend/venv/Scripts/pip install -r ../agent/requirements.txt`),
+since the import happens inside the backend's process, not a separate
+one.
+
+**A real bug found wiring this up**: `agent/settings.py` loaded its
+`.env` with a relative path (`env_file=".env"`), which
+`pydantic-settings` resolves against the process's current working
+directory, not the file's location. That's fine when running
+`apps/agent` on its own (cwd = `apps/agent`), but broke the moment the
+backend imported this module - the cwd was `apps/backend`, so this
+`Settings` tried to load *the backend's* `.env` (`DATABASE_URL`,
+`S3_*`, `CORS_ORIGINS`, ...) and failed validation with "extra inputs
+not permitted" for every one of those keys. Fixed by resolving the
+`.env` path absolutely, relative to `settings.py` itself
+(`Path(__file__).resolve().parent.parent / ".env"`), so it no longer
+depends on which process imports it.
 
 ## Setup
 

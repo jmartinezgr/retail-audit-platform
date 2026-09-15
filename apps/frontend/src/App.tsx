@@ -1,6 +1,7 @@
 import { Route, Routes } from "react-router-dom"
 
 import { AppLayout } from "@/components/app/layout"
+import { CopilotPage } from "@/pages/copilot-page"
 import { HomePage } from "@/pages/home-page"
 import { InvoiceDetailPage } from "@/pages/invoice-detail-page"
 import { JobDetailPage } from "@/pages/job-detail-page"
@@ -14,6 +15,7 @@ function App() {
       <Route element={<AppLayout />}>
         <Route path="/app" element={<HomePage />} />
         <Route path="/app/rules" element={<RulesPage />} />
+        <Route path="/app/copilot" element={<CopilotPage />} />
         <Route path="/jobs/:uploadId" element={<JobDetailPage />} />
         <Route path="/jobs/:uploadId/fac/:facturaId" element={<InvoiceDetailPage />} />
       </Route>

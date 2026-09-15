@@ -33,6 +33,15 @@ Every rule carries a severity (`ERROR` blocks validity, `WARNING` flags without 
 
 On top of those 18, the `/app/rules` screen lets you define your own — a threshold on a field (with optional category/store filters) or a store exclusion window over a date range — through a form, no code changes. They're stored in Postgres and evaluated alongside the built-in 18 the next time gold runs, producing rows with the exact same shape, so the dashboard, the summary matrix, and the export pick them up automatically.
 
+## Copilot — a conversational agent on top of the pipeline (local demo)
+
+`apps/agent/` is a LangGraph agent (Ollama, `qwen2.5:7b`, fully local and free) that answers questions about the rule catalog and real audit results — "what does this rule check", "which rules failed most in the last batch", "why did invoice X fail" — by calling tools that hit this same backend's API and a Qdrant vector store, never by computing or guessing a result itself. Two ways to use it:
+
+- **`/app/copilot`** in the frontend — a minimal chat panel backed by a new `POST /agent/ask` endpoint on this backend that runs the LangGraph graph and returns both the answer and the exact sequence of tool calls it used, shown as an expandable trace (the same "why, not just what" explainability the rest of the app is built around).
+- **MCP server** (`apps/agent/agent/mcp_server.py`) — the same tools exposed over the Model Context Protocol, so any MCP client (Claude Code, Claude Desktop) can call them directly.
+
+This is a local-only demo: it needs Ollama and Qdrant running on the same machine as the backend, so it isn't wired up on the deployed Render instance. Full build rationale (why LangGraph, why tools call the backend over HTTP instead of importing `infrastructure/` directly, measured token cost, known model limitations, the RAG design over rule docs) lives in [`apps/agent/README.md`](apps/agent/README.md).
+
 ## Screenshots
 
 | | |
@@ -82,6 +91,7 @@ For the full reasoning behind every structural decision (why DuckDB over loading
 | **Frontend** | React 19, Vite, TypeScript, Tailwind CSS v4, shadcn/ui (Radix), TanStack Query, React Router |
 | **Testing** | pytest (97 tests over the pure-domain layer — pipeline, static + dynamic rule engine, synthetic generator) |
 | **Synthetic data** | Faker-seeded catalogs + a custom invoice generator that injects specific rule violations on demand |
+| **Copilot (local demo)** | LangGraph, LangChain, Ollama (`qwen2.5:7b` + `nomic-embed-text`), Qdrant, MCP — see [`apps/agent/README.md`](apps/agent/README.md) |
 
 No NestJS, no Spark — see `docs/PLANNING.md`/`docs/ARCHITECTURE.md` for why those were deliberately left out.
 
@@ -114,6 +124,8 @@ npm run dev
 
 Open the printed frontend URL, generate a synthetic Excel from the home screen (or upload your own following the two-sheet format documented in `docs/DATA_MODEL.md`), and run the pipeline.
 
+**4. (Optional) Copilot** — the `/app/copilot` chat panel and the MCP server both need Ollama and Qdrant running locally, plus the backend's venv to also have `apps/agent`'s dependencies installed (`pip install -r ../agent/requirements.txt` from `apps/backend`, since the endpoint imports `agent.graph` directly). Full setup in [`apps/agent/README.md`](apps/agent/README.md).
+
 ## Project structure
 
 ```
@@ -125,13 +137,15 @@ apps/
   backend/
     src/
       infrastructure/   # Postgres, MinIO/R2, Delta, DuckDB adapters
-      api/               # FastAPI routers + Pydantic schemas, one subfolder per feature
+      api/               # FastAPI routers + Pydantic schemas, one subfolder per feature (incl. agent/)
     scripts/             # seed_catalog.py and other one-off operational scripts
   frontend/
     src/
-      pages/             # landing, home, job detail, invoice detail
+      pages/             # landing, home, job detail, invoice detail, copilot
       components/app/    # dashboard, gold table/matrix, column check, theme/language toggles
       lib/                # typed API client, session handling, pipeline orchestration, i18n, theme
+  agent/                 # LangGraph copilot - tools, RAG over rule docs (Qdrant), MCP server
+                          # (own venv, local demo only - see apps/agent/README.md)
 docs/
   PLANNING.md          # product decisions, phases, what's in/out and why
   ARCHITECTURE.md      # how the code is organized, backend and frontend, with a full change history

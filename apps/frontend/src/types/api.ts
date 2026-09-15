@@ -205,3 +205,14 @@ export interface AvailableFieldsResponse {
   categorias: string[]
   sedes: string[]
 }
+
+export interface AgentToolCall {
+  name: string
+  args: Record<string, unknown>
+  result: string
+}
+
+export interface AgentAskResponse {
+  answer: string
+  tool_calls: AgentToolCall[]
+}

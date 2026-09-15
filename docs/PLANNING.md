@@ -669,6 +669,29 @@ no tenía (`summarize_dataset`, y las 2 de la Fase 2 contaban como
 asumidas (el `resumen` pre-calculado, y el índice bilingüe) - cada una
 con su evidencia medida documentada en `apps/agent/README.md`.
 
+   - ✅ Interfaz visual + endpoint HTTP (2026-09-14, mismo día): más
+     allá de las 4 fases del spec (que cubrían CLI + MCP), se agregó
+     `POST /agent/ask` (`apps/backend/src/api/agent/`) — corre el mismo
+     grafo LangGraph ya probado por CLI y por MCP, sin reescribir nada
+     de `tools.py`/`graph.py` — y una página de chat en el frontend
+     (`/app/copilot`) que lo consume, mostrando la respuesta y, en un
+     detalle expandible, la traza exacta de tool-calls usada (nombre,
+     argumentos, resultado) — mismo principio de "explicable, no solo
+     el qué" del resto de la app. Sigue siendo una demo local, no algo
+     que corra en Render: el endpoint importa `agent.graph` metiendo
+     `apps/agent` al `sys.path` (mismo patrón ya usado para el servidor
+     MCP) en vez de instalar `apps/agent` como dependencia del backend,
+     y responde 503 con un mensaje claro si Ollama/Qdrant no están
+     corriendo o sus paquetes no están instalados. Bug real encontrado
+     en la integración: `agent/settings.py` cargaba su `.env` con ruta
+     relativa al cwd del proceso - al importarse desde el backend (cwd
+     distinto), terminaba leyendo por error el `.env` del backend y
+     rompía la validación de sus propias `Settings` ("extra inputs not
+     permitted"); arreglado resolviendo esa ruta de forma absoluta
+     relativa al propio archivo. Verificado end-to-end con el backend y
+     Ollama reales corriendo (pregunta real respondida en el chat, con
+     su tool-call visible), no solo con mocks.
+
 ## 11. Abierto / por decidir más adelante
 
 - `item_duplicado_en_factura` y `cantidad_dentro_de_transferencias` tienen

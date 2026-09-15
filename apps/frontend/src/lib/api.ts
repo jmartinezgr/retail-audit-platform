@@ -1,4 +1,5 @@
 import type {
+  AgentAskResponse,
   AvailableFieldsResponse,
   ColumnValidationResponse,
   DashboardResponse,
@@ -209,6 +210,17 @@ export const api = {
 
     remove: (id: number) =>
       request<{ deleted: boolean }>(`/rules/${id}`, { method: "DELETE" }),
+  },
+
+  agent: {
+    // Demo local únicamente - necesita Ollama y Qdrant corriendo en la
+    // máquina que sirve el backend (ver apps/agent/README.md). El
+    // backend responde 503 si el copiloto no está disponible ahí.
+    ask: (question: string) =>
+      request<AgentAskResponse>("/agent/ask", {
+        method: "POST",
+        body: JSON.stringify({ question }),
+      }),
   },
 }
 

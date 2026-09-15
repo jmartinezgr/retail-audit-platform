@@ -25,6 +25,9 @@ export function AppLayout() {
               <Link to="/app/rules" className="text-muted-foreground px-2 text-sm hover:underline">
                 {t("layout.rules")}
               </Link>
+              <Link to="/app/copilot" className="text-muted-foreground px-2 text-sm hover:underline">
+                {t("layout.copilot")}
+              </Link>
               <Link to="/" className="text-muted-foreground px-2 text-sm hover:underline">
                 {t("layout.aboutProject")}
               </Link>
@@ -56,6 +59,13 @@ export function AppLayout() {
                 className="hover:bg-muted rounded-md px-3 py-2 text-sm"
               >
                 {t("layout.rules")}
+              </Link>
+              <Link
+                to="/app/copilot"
+                onClick={() => setMenuOpen(false)}
+                className="hover:bg-muted rounded-md px-3 py-2 text-sm"
+              >
+                {t("layout.copilot")}
               </Link>
               <Link
                 to="/"

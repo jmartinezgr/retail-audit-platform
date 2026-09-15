@@ -357,6 +357,18 @@ Ya existe:
   create/update/delete real (las demás son de solo lectura o
   procesamiento).
 
+- `api/agent/` — única excepción al patrón `service.py` → `infrastructure/`
+  + `domain/`: `POST /agent/ask` delega a `apps/agent` (el copiloto
+  LangGraph, ver `apps/agent/README.md`), importado dinámicamente en vez
+  de instalado como dependencia del backend (ver Historial de cambios,
+  2026-09-14). `service.py` no conoce el dominio ni Postgres/MinIO —
+  arma el estado inicial del grafo, lo corre, y traduce los mensajes de
+  LangChain a `{answer, tool_calls}` para el frontend. Demo local
+  únicamente: `AgentUnavailableError` (Ollama/Qdrant no disponibles, o
+  las dependencias de `apps/agent` no instaladas) se traduce a 503 en el
+  router, en vez de un 500 genérico — es un estado esperado en el
+  deploy real, no un bug.
+
 Pendiente: `api/catalog/` (CRUD de sedes/trabajadores/productos/etc., solo
 si hace falta editarlos desde el frontend más adelante).
 
@@ -431,13 +443,13 @@ src/
   lib/pipeline.ts        # runFullPipeline()/runGoldOnly() - corren bronze→silver→gold (o solo gold) esperando cada capa de verdad
   lib/theme.tsx           # ThemeProvider/useTheme - toggle .dark, persiste en localStorage
   lib/i18n.tsx             # I18nProvider/useI18n - t(key, vars) con interpolación {placeholder}
-  i18n/translations.ts    # diccionarios en/es, ~120 claves (layout, landing, home, job, gold, columnCheck, dashboard, rules)
+  i18n/translations.ts    # diccionarios en/es, ~140 claves (layout, landing, home, job, gold, columnCheck, dashboard, rules, copilot)
   components/ui/         # shadcn/ui (generados, no se editan a mano salvo necesidad real)
   components/app/        # componentes propios (layout, status-badge, gold-table, gold-matrix,
                           #   dashboard, column-check, theme-toggle, language-toggle)
-  pages/                  # una por ruta (landing-page, home-page, job-detail-page, invoice-detail-page, rules-page)
+  pages/                  # una por ruta (landing-page, home-page, job-detail-page, invoice-detail-page, rules-page, copilot-page)
   App.tsx                 # rutas (react-router) - "/" landing, "/app" home, "/app/rules" reglas dinámicas,
-                          #   "/jobs/:id" detalle, "/jobs/:id/fac/:facturaId" detalle de factura
+                          #   "/app/copilot" chat del agente, "/jobs/:id" detalle, "/jobs/:id/fac/:facturaId" detalle de factura
   main.tsx                # QueryClientProvider + BrowserRouter + Toaster
 ```
 
@@ -511,6 +523,20 @@ que hace demostrable "creo/edito una regla dinámica y re-audito un job
 ya existente sin resubir el excel", sin tocar `gold-matrix.tsx`,
 `dashboard.tsx` ni `gold-table.tsx` (los tres ya pivotean por lo que
 venga en la columna `regla`, no por una lista fija).
+
+**Página del copiloto**: `pages/copilot-page.tsx` (`/app/copilot`, link
+"Copilot"/"Copiloto" en `AppLayout`) - un chat mínimo (sin librería de
+chat, solo `Input` + lista de turnos) contra `POST /agent/ask`
+(`api.agent.ask`, ver `apps/backend/src/api/agent/`). Cada respuesta del
+agente muestra, en un `<details>` colapsado por defecto (no se agregó un
+componente `Collapsible` nuevo solo para esto), la traza real de qué
+tool se llamó, con qué argumentos y qué devolvió — la misma idea de
+"por qué, no solo qué" del resto de la app, aplicada al agente en vez
+de al motor de reglas. Un 503 del backend (Ollama/Qdrant no disponibles,
+caso esperado en el deploy real) se distingue de un error genérico y
+muestra un mensaje explicando que es una demo local, no un fallo real
+de la app. Sin `AppLayout` propio ni ruta pública nueva más allá de eso
+- vive dentro de `/app` como cualquier otra pantalla.
 
 **Landing vs. app**: `/` es marketing (`landing-page.tsx`, sin `AppLayout`
 — tiene su propio header mínimo), `/app`, `/app/rules` y `/jobs/:id` sí
@@ -969,3 +995,33 @@ React y no puede llamar a `useI18n()`.
   correctos, sin necesitar un subproceso vivo por corrida de tests. Con
   esto, las 4 fases de `docs/copilot-spec.md` quedan completas en la
   rama `feature/agent-copilot` (sin mergear a `main`).
+
+- **2026-09-14**: interfaz visual del copiloto — `POST /agent/ask`
+  (`apps/backend/src/api/agent/{router,service,schemas}.py`) y la
+  página `/app/copilot` en el frontend. El endpoint no reimplementa el
+  agente: importa `agent.graph.build_graph()` metiendo `apps/agent` al
+  `sys.path` en tiempo de import (mismo truco ya usado para
+  `mcp_server.py`, ver arriba), en vez de instalar `apps/agent` como
+  dependencia declarada del backend — así el deploy de Render no carga
+  `langgraph`/`qdrant-client`/etc. si nadie usa el chat, y el endpoint
+  responde 503 (`AgentUnavailableError`) con un mensaje legible si esas
+  dependencias no están instaladas o si Ollama/Qdrant no responden. La
+  respuesta incluye `tool_calls` (nombre, argumentos, resultado
+  truncado a 800 chars) extraídos de los mensajes `AIMessage`/
+  `ToolMessage` del estado final del grafo — no es texto libre del
+  modelo, es la traza real de qué tool se llamó y con qué, mostrada en
+  el frontend como un detalle expandible (mismo principio de "por qué,
+  no solo qué" del resto de la app). Bug real encontrado al conectar
+  ambas apps: `agent/settings.py` resolvía su `.env` con una ruta
+  relativa (`env_file=".env"`), que `pydantic-settings` interpreta
+  relativa al cwd del proceso en ejecución, no al archivo — al
+  importarse desde `apps/backend` (cwd real: `apps/backend`, con su
+  propio `.env` de Postgres/S3/CORS), esa ruta relativa apuntaba al
+  `.env` equivocado y la validación de `Settings` fallaba con "extra
+  inputs not permitted" sobre las claves del backend. Arreglado
+  resolviendo `_ENV_FILE` de forma absoluta con
+  `Path(__file__).resolve().parent.parent / ".env"`. Verificado
+  end-to-end con Playwright contra el frontend, el backend y Ollama
+  reales corriendo (no mocks): una pregunta real sobre el último lote
+  respondida correctamente, con su tool-call (`summarize_dataset`)
+  visible en el detalle expandible.

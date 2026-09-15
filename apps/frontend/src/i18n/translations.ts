@@ -8,6 +8,7 @@ const en = {
   // Layout
   "layout.tagline": "layered data audit engine",
   "layout.rules": "Rules",
+  "layout.copilot": "Copilot",
   "layout.aboutProject": "About the project",
   "layout.back": "Back",
 
@@ -259,11 +260,28 @@ const en = {
   "rules.summaryUmbral": "{campo} {operador} {valor}",
   "rules.summaryVentana": "{sede}, {inicio} to {fin}",
   "rules.loading": "Loading...",
+
+  // Copilot (conversational agent, local demo only)
+  "copilot.title": "Copilot",
+  "copilot.subtitle": "Ask questions about rules and audit results in plain language. Runs entirely locally (LangGraph + Ollama) — it never computes a result itself, every claim comes from a real tool call against this backend.",
+  "copilot.localBadge": "Local demo",
+  "copilot.placeholder": "e.g. Which rules failed most in the last batch?",
+  "copilot.ask": "Ask",
+  "copilot.thinking": "Thinking...",
+  "copilot.emptyState": "Ask a question to get started. Try one of these:",
+  "copilot.sample1": "What does the factura_total_cuadra rule check?",
+  "copilot.sample2": "Which rules failed most in the last batch?",
+  "copilot.sample3": "Why did invoice FAC-0000010 fail?",
+  "copilot.toolCallsLabel": "Tool calls used ({count})",
+  "copilot.unavailableTitle": "Copilot unavailable",
+  "copilot.unavailableBody": "This backend doesn't have the local copilot set up (Ollama + Qdrant running on the same machine) — see apps/agent/README.md. This feature only works when running the project locally.",
+  "copilot.genericError": "Something went wrong answering that. Please try again.",
 } as const
 
 const es: Record<keyof typeof en, string> = {
   "layout.tagline": "motor de auditoría de datos por capas",
   "layout.rules": "Reglas",
+  "layout.copilot": "Copiloto",
   "layout.aboutProject": "Sobre el proyecto",
   "layout.back": "Volver",
 
@@ -508,6 +526,22 @@ const es: Record<keyof typeof en, string> = {
   "rules.summaryUmbral": "{campo} {operador} {valor}",
   "rules.summaryVentana": "{sede}, {inicio} a {fin}",
   "rules.loading": "Cargando...",
+
+  // Copiloto (agente conversacional, demo local únicamente)
+  "copilot.title": "Copiloto",
+  "copilot.subtitle": "Haz preguntas sobre reglas y resultados de auditoría en lenguaje natural. Corre completamente en local (LangGraph + Ollama) — nunca calcula un resultado por sí mismo, cada afirmación viene de una llamada real a una tool contra este backend.",
+  "copilot.localBadge": "Demo local",
+  "copilot.placeholder": "ej. ¿Qué reglas fallaron más en el último lote?",
+  "copilot.ask": "Preguntar",
+  "copilot.thinking": "Pensando...",
+  "copilot.emptyState": "Haz una pregunta para empezar. Prueba con alguna de estas:",
+  "copilot.sample1": "¿Qué verifica la regla factura_total_cuadra?",
+  "copilot.sample2": "¿Qué reglas fallaron más en el último lote?",
+  "copilot.sample3": "¿Por qué falló la factura FAC-0000010?",
+  "copilot.toolCallsLabel": "Tools usadas ({count})",
+  "copilot.unavailableTitle": "Copiloto no disponible",
+  "copilot.unavailableBody": "Este backend no tiene el copiloto local configurado (Ollama + Qdrant corriendo en la misma máquina) — ver apps/agent/README.md. Esta función solo funciona corriendo el proyecto en local.",
+  "copilot.genericError": "Algo salió mal respondiendo eso. Intenta de nuevo.",
 }
 
 export const translations = { en, es }
