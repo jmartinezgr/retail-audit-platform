@@ -276,6 +276,9 @@ const en = {
   "copilot.unavailableTitle": "Copilot unavailable",
   "copilot.unavailableBody": "This backend doesn't have the local copilot set up (Ollama + Qdrant running on the same machine) — see apps/agent/README.md. This feature only works when running the project locally.",
   "copilot.genericError": "Something went wrong answering that. Please try again.",
+  "copilot.disabledTitle": "Not available on this hosted demo",
+  "copilot.disabledBody": "The copilot runs a local LLM (Ollama) and a local vector database (Qdrant) — it only works when the project runs on your own machine, not on this free-tier hosted backend. Clone the repo and follow the setup guide to try it for real.",
+  "copilot.disabledCta": "See how to run it locally",
 } as const
 
 const es: Record<keyof typeof en, string> = {
@@ -542,6 +545,9 @@ const es: Record<keyof typeof en, string> = {
   "copilot.unavailableTitle": "Copiloto no disponible",
   "copilot.unavailableBody": "Este backend no tiene el copiloto local configurado (Ollama + Qdrant corriendo en la misma máquina) — ver apps/agent/README.md. Esta función solo funciona corriendo el proyecto en local.",
   "copilot.genericError": "Algo salió mal respondiendo eso. Intenta de nuevo.",
+  "copilot.disabledTitle": "No disponible en esta demo hosteada",
+  "copilot.disabledBody": "El copiloto corre un LLM local (Ollama) y una base de datos vectorial local (Qdrant) — solo funciona corriendo el proyecto en tu propia máquina, no en este backend gratuito hosteado. Clona el repo y sigue la guía de instalación para probarlo de verdad.",
+  "copilot.disabledCta": "Ver cómo correrlo en local",
 }
 
 export const translations = { en, es }

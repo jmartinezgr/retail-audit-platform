@@ -1,4 +1,4 @@
-import { Loader2, Send, Wrench } from "lucide-react"
+import { Laptop, Loader2, Send, Wrench } from "lucide-react"
 import { useState } from "react"
 import Markdown from "react-markdown"
 
@@ -10,6 +10,17 @@ import { ApiError } from "@/lib/api"
 import { api } from "@/lib/api"
 import { useI18n } from "@/lib/i18n"
 import type { AgentToolCall } from "@/types/api"
+
+// La demo hosteada (Vercel + Render) no tiene Ollama/Qdrant corriendo -
+// en vez de dejar que cada pregunta falle con un 503, esta build-time
+// flag (puesta en "false" solo en las env vars de Vercel, ver
+// .env.example) oculta el chat entero detrás de una explicación clara,
+// con instrucciones para correrlo en local. Default = habilitado (dev
+// local no necesita tocar nada).
+const COPILOT_AVAILABLE = import.meta.env.VITE_COPILOT_AVAILABLE !== "false"
+
+const AGENT_README_URL =
+  "https://github.com/jmartinezgr/retail-audit-platform/blob/main/apps/agent/README.md"
 
 // El modelo responde en Markdown (negrita, listas) - sin esto se veía el
 // "**texto**" literal en vez de negrita. Sin plugin de tipografía de
@@ -60,6 +71,26 @@ function ToolCallsDisclosure({ toolCalls, label }: { toolCalls: AgentToolCall[];
   )
 }
 
+function CopilotDisabledNotice() {
+  const { t } = useI18n()
+  return (
+    <Card>
+      <CardContent className="flex flex-col items-center gap-3 py-10 text-center">
+        <Laptop className="text-muted-foreground size-8" />
+        <div>
+          <p className="font-medium">{t("copilot.disabledTitle")}</p>
+          <p className="text-muted-foreground mx-auto mt-1 max-w-md text-sm">{t("copilot.disabledBody")}</p>
+        </div>
+        <Button asChild variant="outline" size="sm">
+          <a href={AGENT_README_URL} target="_blank" rel="noreferrer">
+            {t("copilot.disabledCta")}
+          </a>
+        </Button>
+      </CardContent>
+    </Card>
+  )
+}
+
 export function CopilotPage() {
   const { t } = useI18n()
   const [question, setQuestion] = useState("")
@@ -67,6 +98,21 @@ export function CopilotPage() {
   const [asking, setAsking] = useState(false)
 
   const samples = [t("copilot.sample1"), t("copilot.sample2"), t("copilot.sample3")]
+
+  if (!COPILOT_AVAILABLE) {
+    return (
+      <div className="flex flex-col gap-6">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="text-xl font-semibold">{t("copilot.title")}</h1>
+            <Badge variant="secondary">{t("copilot.localBadge")}</Badge>
+          </div>
+          <p className="text-muted-foreground max-w-2xl text-sm">{t("copilot.subtitle")}</p>
+        </div>
+        <CopilotDisabledNotice />
+      </div>
+    )
+  }
 
   async function ask(q: string) {
     const trimmed = q.trim()

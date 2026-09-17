@@ -435,6 +435,14 @@ the graph actually runs. To use it locally: install this app's
 since the import happens inside the backend's process, not a separate
 one.
 
+**Hidden on the hosted demo, on purpose**: the deployed frontend
+(Vercel) always ships `VITE_COPILOT_AVAILABLE=false`, which makes
+`/app/copilot` render a short "run this locally" notice with a link
+back to this README instead of a chat that would just 503 on every
+question - the deployed Render backend has no Ollama/Qdrant to talk to.
+Local dev needs nothing set (any value other than the literal string
+`"false"` counts as enabled) - see `apps/frontend/.env.example`.
+
 **A real bug found wiring this up**: `agent/settings.py` loaded its
 `.env` with a relative path (`env_file=".env"`), which
 `pydantic-settings` resolves against the process's current working

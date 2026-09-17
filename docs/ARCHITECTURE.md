@@ -1025,3 +1025,11 @@ React y no puede llamar a `useI18n()`.
   reales corriendo (no mocks): una pregunta real sobre el último lote
   respondida correctamente, con su tool-call (`summarize_dataset`)
   visible en el detalle expandible.
+
+- **2026-09-17**: `/app/copilot` en el deploy de prod (Vercel) - una
+  build-time flag (`VITE_COPILOT_AVAILABLE`, default habilitado) oculta
+  el chat detrás de un aviso de "corre esto en local" con link a
+  `apps/agent/README.md`, en vez de dejar que cada pregunta falle con un
+  503 real contra el backend de Render (que no tiene Ollama/Qdrant).
+  Verificado localmente simulando prod (`.env.local` con la flag en
+  `"false"`, capturado con Playwright, revertido después).

@@ -160,4 +160,6 @@ docker-compose.yml     # local Postgres + MinIO
 
 Frontend on Vercel, backend on Render, Postgres on Neon, storage on Cloudflare R2 — all free tier. The backend sleeps after inactivity, so the first request after a while can take up to ~30s; the app absorbs that with retries and a loading hint instead of surfacing an error.
 
+The Copilot is the one exception: it needs Ollama and Qdrant running locally, which the hosted Render backend doesn't have. Vercel's production build sets `VITE_COPILOT_AVAILABLE=false`, which turns `/app/copilot` into a short explanation instead of a chat that would just fail — see [`apps/agent/README.md`](apps/agent/README.md) to run it for real.
+
 Full phase-by-phase history and what's explicitly out of scope (and why) in [`docs/PLANNING.md`](docs/PLANNING.md).
