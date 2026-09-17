@@ -13,8 +13,6 @@ import json
 import sys
 from pathlib import Path
 
-from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
-
 _AGENT_APP_DIR = Path(__file__).resolve().parents[4] / "agent"
 
 _graph = None
@@ -43,6 +41,16 @@ def _get_graph():
 
 def ask(question: str) -> dict:
     graph = _get_graph()
+
+    # Import diferido, no a nivel de módulo: langchain_core no está en las
+    # dependencias del backend a propósito (ver docstring del módulo) -
+    # un import top-level acá tumbaba el arranque de TODO el backend en
+    # Render (ModuleNotFoundError en el import de main.py), no solo este
+    # endpoint. Para cuando _get_graph() ya construyó el grafo,
+    # langchain_core ya está garantizado disponible (es dependencia
+    # transitiva de agent.graph), así que esto nunca falla en la práctica.
+    from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+
     state = {"messages": [HumanMessage(content=question)], "step_count": 0}
     try:
         result = graph.invoke(state)
