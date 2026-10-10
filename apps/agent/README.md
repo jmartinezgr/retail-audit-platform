@@ -575,6 +575,69 @@ Ollama isn't reachable. Local dev keeps using Ollama by default,
 nothing changes there unless you explicitly set `LLM_PROVIDER=groq`/
 `EMBED_PROVIDER=gemini` in your own `.env`.
 
+## Session-scoped datasets: context propagation, not dependency injection
+
+Found testing the deployed chat UI end-to-end as a real visitor would
+(not through unit tests, which never exercised this path): asking the
+copilot "which rules failed most in the last batch" said no dataset
+existed, even with a real, completed upload visible on screen.
+
+The cause: `GET /uploads/` is scoped per visitor
+(`apps/backend/src/api/uploads/router.py` - a `X-Client-Id` header the
+frontend generates and stores in `localStorage`, falling back to a
+shared `"anonymous"` bucket with no header). The agent's tools
+(`tools.py:_resolve_dataset_id`) called that same endpoint with no
+headers at all - so "the most recent dataset" always meant the
+`anonymous` bucket's most recent dataset, never the real visitor's own.
+
+**Why this isn't solved with a function parameter (dependency
+injection)**: `_resolve_dataset_id` is called from inside `@tool`
+functions, and a tool's callable signature is effectively decided by
+the model - LangGraph's `ToolNode` invokes a tool with whatever
+arguments the LLM's tool-call JSON contains, nothing else. Adding a
+`session_id` parameter there would mean trusting the model to always
+remember to pass it on every relevant call - the same category of
+problem already solved elsewhere in this project by pre-computing
+instead of trusting the model (see `explain_invoice_result`'s
+`resumen`). The visitor's identity has to reach the tool through a
+channel the model never touches.
+
+The fix is `contextvars.ContextVar` (`agent/context.py`) - the same
+general mechanism SDKs like Sentry/OpenTelemetry use to propagate a
+request's identity through code that never receives it as a parameter,
+sometimes called "ambient context" as opposed to the explicit kind
+(`Depends()` is DI; this is the opposite in spirit - implicit, read
+from "the current execution context" instead of a signature).
+`apps/backend/src/api/agent/service.py`'s `ask()` sets it
+(`context.session_id.set(session_id)`, read from the same
+`X-Client-Id` header `lib/api.ts` already sends on every request - no
+frontend change needed) before invoking the graph, and resets it in a
+`finally`; `_resolve_dataset_id` reads it and forwards it as
+`X-Client-Id` on its own call to `/uploads/`.
+
+**This has to be concurrency-safe, not just correct for one request at
+a time**: `/agent/ask` is a plain `def`, dispatched to Starlette's
+threadpool (see "Production" above) - two visitors' questions really
+can be in flight on different threads at once, and `ContextVar` is
+exactly the tool for this because each thread gets its own copy of the
+context (unlike a module-level global, which every thread would
+share). Verified three ways, not just one: a unit test setting the
+context directly, a test spinning up 8 real threads each with a
+different session and asserting none leaked into another's result
+(`test_resolve_dataset_id_is_isolated_across_concurrent_sessions`), and
+a live run against the real local backend - no `X-Client-Id` correctly
+resolved to the real `anonymous` dataset (unchanged behavior), while
+`X-Client-Id: session-A` (a session with nothing uploaded) correctly
+got "no datasets have been uploaded yet" instead of silently leaking
+the anonymous bucket's data.
+
+**What doesn't change**: the CLI (`python -m agent "question"`) and MCP
+clients (Claude Desktop, Claude Code) have no concept of a browser
+session at all - the context var simply stays unset for those entry
+points, so they keep resolving against the `anonymous` bucket exactly
+as before. Zero behavior change there, by construction, not by a
+special case.
+
 ## Setup
 
 ```bash
@@ -603,7 +666,7 @@ by design, see "Architecture" above.
 python -m pytest -v
 ```
 
-29 tests: unit tests for all six tools (backend mocked at the `httpx`
+32 tests: unit tests for all six tools (backend mocked at the `httpx`
 boundary, Qdrant/embeddings mocked for `search_rule_docs` — same standard
 as `packages/domain`'s 100 tests), the MCP server's tool registration
 (`test_mcp_server.py`, verifies the same 6 tools/names/descriptions are
@@ -623,7 +686,12 @@ builds once and only once across repeated calls
 racing to build it at once
 (`test_ensure_index_is_safe_under_concurrent_calls` — this is the real
 race condition described in "Production" above, not a hypothetical
-test). A separate small suite in `apps/backend/tests/api/agent/` covers
-the rate limiter (per-IP window, `X-Forwarded-For` parsing, the proxy
-IP itself never counted) against a minimal FastAPI app mounting just
-that router — no Postgres/MinIO needed for those.
+test), plus three covering the session-scoped dataset context var
+(sends the right `X-Client-Id`, sends none without a session set, and
+stays correct across 8 real concurrent threads — see "Session-scoped
+datasets" above). A separate 6-test suite in
+`apps/backend/tests/api/agent/` covers the rate limiter (per-IP window,
+`X-Forwarded-For` parsing, the proxy IP itself never counted) and that
+the incoming `X-Client-Id` header actually reaches `ask()` as
+`session_id`, against a minimal FastAPI app mounting just that router —
+no Postgres/MinIO needed for those.

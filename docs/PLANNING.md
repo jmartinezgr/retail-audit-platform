@@ -772,6 +772,36 @@ con su evidencia medida documentada en `apps/agent/README.md`.
        `apps/backend/tests/api/agent/` (4, rate limit). Detalle completo
        en `apps/agent/README.md`, sección "Production: Groq + Gemini +
        in-memory Qdrant".
+   - ✅ Bug real de sesión en el copiloto, encontrado probando el chat
+     ya desplegado como lo haría un visitante de verdad (2026-10-10,
+     mismo día): preguntar "qué reglas fallaron más en el último lote"
+     respondía que no había ningún dataset, con uno real y completo
+     visible en pantalla. Causa: `/uploads/` filtra por sesión de
+     visitante (header `X-Client-Id`, cada quien ve solo lo suyo - ver
+     §2 "Aislar uploads entre visitantes"), pero las tools del agente
+     le pegaban a ese mismo endpoint sin mandar el header, así que
+     siempre caían en el cajón `"anonymous"` compartido, nunca en el de
+     quien estaba chateando. Arreglado con `contextvars.ContextVar`
+     (`agent/context.py`) en vez de un parámetro normal de la tool -
+     la firma de una `@tool` de LangChain la decide el modelo (qué
+     argumentos manda en su tool-call), no se le puede agregar un
+     `session_id` de la nada sin depender de que el modelo se acuerde
+     de pasarlo siempre. El router lee el mismo header que el frontend
+     ya manda en cada request (`lib/api.ts`, sin cambios ahí) y lo
+     guarda en el contexto antes de correr el grafo. Verificado en tres
+     niveles - un test directo, un test con 8 hilos reales en paralelo
+     (dos visitantes preguntando "al mismo tiempo" no deben mezclar
+     sesiones, algo real bajo el threadpool de FastAPI, no hipotético)
+     y una corrida real contra el backend local: sin header resuelve al
+     dataset real de `anonymous` (sin cambios ahí), con
+     `X-Client-Id: session-A` (una sesión sin nada subido) responde
+     correctamente "no hay datasets" en vez de filtrar los de otra
+     sesión. CLI y MCP no tienen sesión de navegador - siguen cayendo
+     en `anonymous` exactamente como antes, sin caso especial. Detalle
+     completo (incluyendo por qué no era un caso de dependency
+     injection normal) en `apps/agent/README.md`, sección
+     "Session-scoped datasets: context propagation, not dependency
+     injection".
 
 ## 11. Abierto / por decidir más adelante
 

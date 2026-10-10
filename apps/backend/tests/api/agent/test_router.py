@@ -13,8 +13,10 @@ from src.api.agent import router as router_module
 from src.api.agent.router import router
 
 
-def _make_client(monkeypatch, ask_result=None, ask_error=None):
-    def fake_ask(question: str) -> dict:
+def _make_client(monkeypatch, ask_result=None, ask_error=None, captured_calls=None):
+    def fake_ask(question: str, session_id: str | None = None) -> dict:
+        if captured_calls is not None:
+            captured_calls.append({"question": question, "session_id": session_id})
         if ask_error:
             raise ask_error
         return ask_result or {"answer": "ok", "tool_calls": []}
@@ -74,3 +76,28 @@ def test_translates_agent_unavailable_to_503(monkeypatch):
     res = client.post("/agent/ask", json={"question": "hola"})
     assert res.status_code == 503
     assert res.json()["detail"] == "no configurado"
+
+
+def test_forwards_x_client_id_to_ask_as_session_id(monkeypatch):
+    """Bug real: sin esto, el copiloto de un visitante siempre resolvía
+    'el dataset más reciente' contra el cajón "anonymous" del backend,
+    nunca contra los datasets reales de esa sesión - ver
+    apps/agent/agent/tools.py:_resolve_dataset_id."""
+    calls = []
+    client = _make_client(monkeypatch, captured_calls=calls)
+
+    client.post("/agent/ask", json={"question": "hola"}, headers={"X-Client-Id": "visitor-abc123"})
+
+    assert calls == [{"question": "hola", "session_id": "visitor-abc123"}]
+
+
+def test_session_id_is_none_without_the_header(monkeypatch):
+    """Sin header (CLI, scripts, un cliente viejo) -> None, que en
+    tools.py cae al comportamiento de siempre ("anonymous" en el
+    backend) - no un string vacío ni "anonymous" puesto a mano acá."""
+    calls = []
+    client = _make_client(monkeypatch, captured_calls=calls)
+
+    client.post("/agent/ask", json={"question": "hola"})
+
+    assert calls == [{"question": "hola", "session_id": None}]

@@ -71,7 +71,7 @@ def invalidate_rag_index() -> None:
         pass
 
 
-def ask(question: str) -> dict:
+def ask(question: str, session_id: str | None = None) -> dict:
     graph = _get_graph()
 
     # Import diferido, no a nivel de módulo: langchain_core no está en las
@@ -83,14 +83,27 @@ def ask(question: str) -> dict:
     # transitiva de agent.graph), así que esto nunca falla en la práctica.
     from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
-    state = {"messages": [HumanMessage(content=question)], "step_count": 0}
+    from agent import context
+
+    # Contexto ambiental, no un parámetro de la tool (ver agent/context.py
+    # para el porqué) - las tools que resuelven "el dataset más reciente"
+    # (tools.py:_resolve_dataset_id) lo leen para saber de qué sesión de
+    # verdad están hablando, en vez de caer siempre en el cajón
+    # "anonymous" del backend. `reset()` en el finally: este `ask()`
+    # corre en un hilo del threadpool que Starlette puede reusar para
+    # otra request después - sin resetear, una pregunta sin sesión
+    # heredaría la del último que sí mandó una.
+    token = context.session_id.set(session_id)
     try:
+        state = {"messages": [HumanMessage(content=question)], "step_count": 0}
         result = graph.invoke(state)
     except Exception as e:
         raise AgentUnavailableError(
             f"el copiloto no pudo responder - revisa que el LLM configurado "
             f"(Ollama local, o Groq/Gemini en prod) esté disponible: {e}"
         )
+    finally:
+        context.session_id.reset(token)
 
     messages = result["messages"]
     tool_calls = []

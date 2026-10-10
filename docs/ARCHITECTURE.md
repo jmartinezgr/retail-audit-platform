@@ -1090,3 +1090,43 @@ React y no puede llamar a `useI18n()`.
   `X-Forwarded-For`) para cuidar la cuota gratis de ambos proveedores -
   funciona como contador único justamente porque Render corre un solo
   proceso.
+
+- **2026-10-10**: bug real de aislamiento de sesión en el copiloto,
+  encontrado probando el chat ya desplegado como un visitante real, no
+  en un test - `/uploads/` filtra por `X-Client-Id` (cada visitante ve
+  solo sus propios datasets, ver §2 "Aislar uploads entre visitantes"),
+  pero las tools del agente (`tools.py:_resolve_dataset_id`) llamaban a
+  ese mismo endpoint sin mandar el header, así que "el dataset más
+  reciente" siempre resolvía contra el cajón `"anonymous"` compartido,
+  nunca contra los datasets reales de quien estaba chateando. Arreglado
+  con `contextvars.ContextVar` (`apps/agent/agent/context.py`) en vez
+  de un parámetro explícito de la tool - deliberado, no una preferencia
+  estética: la firma de una `@tool` de LangChain la define el modelo
+  vía su tool-call JSON, no el código, así que agregarle un parámetro
+  `session_id` ahí significaría confiar en que el modelo se acuerde de
+  pasarlo siempre, el mismo tipo de problema que ya se evitó en otras
+  partes del agente precalculando en vez de confiar en el modelo (ver
+  `explain_invoice_result`). Es "context propagation"/"ambient context"
+  (el mismo mecanismo que usan SDKs como Sentry/OpenTelemetry para
+  propagar el id de una request por código que no lo recibe como
+  parámetro), no dependency injection - la diferencia es justamente que
+  el valor no aparece en ninguna firma, se lee del contexto de ejecución
+  actual. `apps/backend/src/api/agent/service.py` lo setea
+  (`context.session_id.set(...)`, leído del mismo header `X-Client-Id`
+  que `lib/api.ts` ya manda en cada request - cero cambios de frontend)
+  antes de `graph.invoke()`, lo resetea en un `finally`. Seguro bajo
+  concurrencia porque `/agent/ask` es un `def` plano despachado al
+  threadpool de Starlette (ver entrada anterior) - cada hilo recibe su
+  propia copia del contexto, a diferencia de un global a nivel de
+  módulo, que todos compartirían. Verificado en tres niveles, no solo
+  uno: un test directo, un test con 8 hilos reales lanzados a la vez
+  (dos sesiones "preguntando al mismo tiempo" no deben mezclarse - algo
+  real bajo este threadpool, no hipotético) y una corrida real contra
+  el backend local con Ollama: sin header resuelve igual que siempre
+  (el dataset real de `anonymous`), con `X-Client-Id: session-A` (una
+  sesión sin nada subido) responde "no hay datasets" en vez de filtrar
+  los de otra sesión. CLI y MCP no tienen sesión de navegador - el
+  contexto queda sin setear y siguen cayendo en `anonymous` exactamente
+  como antes, sin caso especial en el código. Detalle completo en
+  `apps/agent/README.md`, sección "Session-scoped datasets: context
+  propagation, not dependency injection".

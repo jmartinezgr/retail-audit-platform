@@ -10,6 +10,7 @@ para decidir cuándo y cómo llamar la tool."""
 import httpx
 from langchain_core.tools import tool
 
+from agent import context
 from agent.rag.retrieve import search_rule_docs
 from agent.settings import settings
 
@@ -22,8 +23,18 @@ class _NoDatasetError(Exception):
 def _resolve_dataset_id(dataset_id: str | None) -> str:
     if dataset_id is not None:
         return dataset_id
+
+    # Mismo header que manda el frontend en cada request (ver
+    # apps/frontend/src/lib/session.ts) - sin esto, "el dataset más
+    # reciente" siempre caía en el cajón "anonymous" del backend (ver
+    # api/uploads/router.py:get_session_id), nunca en el de quien de
+    # verdad está chateando. Bug real, encontrado probando el chat en
+    # vivo como lo haría un visitante cualquiera, no en un test.
+    sid = context.session_id.get()
+    headers = {"X-Client-Id": sid} if sid else {}
+
     try:
-        resp = httpx.get(f"{settings.BACKEND_BASE_URL}/uploads/?limit=1", timeout=10)
+        resp = httpx.get(f"{settings.BACKEND_BASE_URL}/uploads/?limit=1", headers=headers, timeout=10)
         resp.raise_for_status()
         uploads = resp.json()["uploads"]
     except httpx.HTTPError as e:

@@ -52,7 +52,11 @@ def _check_rate_limit(ip: str) -> None:
 @router.post("/ask", response_model=AgentAskResponse)
 def ask_agent(payload: AgentAskRequest, request: Request):
     _check_rate_limit(_client_ip(request))
+    # Mismo header que ya manda lib/api.ts en cada request (igual que
+    # /uploads/, /rules/, etc.) - sin pasarlo, el copiloto nunca ve los
+    # datasets de quien está chateando (ver tools.py:_resolve_dataset_id).
+    session_id = request.headers.get("x-client-id")
     try:
-        return ask(payload.question)
+        return ask(payload.question, session_id=session_id)
     except AgentUnavailableError as e:
         raise HTTPException(status_code=503, detail=str(e))

@@ -222,3 +222,81 @@ def test_run_rule_reports_error_when_not_found(monkeypatch):
     monkeypatch.setattr(tools.httpx, "post", fake_post)
     result = tools.run_rule.func("item_cuadra", "FAC-999", dataset_id="job-1")
     assert result[0]["error"] == "invoice not found"
+
+
+# --- _resolve_dataset_id / contexto de sesión -----------------------------
+
+
+def test_resolve_dataset_id_sends_session_header_when_set(monkeypatch):
+    """Bug real: sin esto, 'el dataset más reciente' siempre caía en el
+    cajón "anonymous" del backend (ver api/uploads/router.py), nunca en
+    el de quien de verdad está chateando - encontrado probando el chat
+    en vivo, no en un test."""
+    seen_headers = {}
+
+    def fake_get(url, headers=None, timeout=None, **kwargs):
+        seen_headers.update(headers or {})
+        return FakeResponse({"uploads": [{"upload_id": "session-job"}]})
+
+    monkeypatch.setattr(tools.httpx, "get", fake_get)
+    token = tools.context.session_id.set("visitor-abc123")
+    try:
+        result = tools._resolve_dataset_id(None)
+    finally:
+        tools.context.session_id.reset(token)
+
+    assert result == "session-job"
+    assert seen_headers == {"X-Client-Id": "visitor-abc123"}
+
+
+def test_resolve_dataset_id_sends_no_session_header_by_default(monkeypatch):
+    """CLI y MCP (Claude Desktop, etc.) no tienen concepto de sesión de
+    navegador - deben seguir cayendo en "anonymous" en el backend, igual
+    que siempre, sin mandar el header."""
+    seen_headers = {}
+
+    def fake_get(url, headers=None, timeout=None, **kwargs):
+        seen_headers.update(headers or {})
+        return FakeResponse({"uploads": [{"upload_id": "anon-job"}]})
+
+    monkeypatch.setattr(tools.httpx, "get", fake_get)
+    assert tools.context.session_id.get() is None  # nadie lo seteó en este test
+    result = tools._resolve_dataset_id(None)
+
+    assert result == "anon-job"
+    assert seen_headers == {}
+
+
+def test_resolve_dataset_id_is_isolated_across_concurrent_sessions(monkeypatch):
+    """El contexto es por hilo, no un global compartido - dos 'sesiones'
+    distintas resolviendo 'el dataset más reciente' al mismo tiempo no
+    deben verse la una a la otra, ni mezclarse. Esto es justo lo que un
+    único threadpool de FastAPI puede producir bajo tráfico real (dos
+    visitantes preguntando casi a la vez) - se prueba con hilos reales,
+    no solo llamadas secuenciales."""
+    import threading
+
+    def fake_get(url, headers=None, timeout=None, **kwargs):
+        sid = (headers or {}).get("X-Client-Id", "anonymous")
+        return FakeResponse({"uploads": [{"upload_id": f"job-for-{sid}"}]})
+
+    monkeypatch.setattr(tools.httpx, "get", fake_get)
+
+    results: dict[str, str] = {}
+
+    def worker(session: str):
+        token = tools.context.session_id.set(session)
+        try:
+            results[session] = tools._resolve_dataset_id(None)
+        finally:
+            tools.context.session_id.reset(token)
+
+    sessions = [f"visitor-{i}" for i in range(8)]
+    threads = [threading.Thread(target=worker, args=(s,)) for s in sessions]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    for s in sessions:
+        assert results[s] == f"job-for-{s}"
