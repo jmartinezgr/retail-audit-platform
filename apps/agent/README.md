@@ -44,13 +44,16 @@ stop, instead of that logic being scattered through a manual loop.
 
 ```
 agent/
-  settings.py   backend URL, Ollama config, Qdrant config, MAX_STEPS
+  settings.py   backend URL, LLM_PROVIDER/EMBED_PROVIDER (ollama|groq,
+                ollama|gemini), Qdrant config, MAX_STEPS
   state.py      AgentState: messages (reducer: add_messages) + step_count
   tools.py      get_rule, query_gold_results, summarize_dataset,
                 explain_invoice_result, run_rule (+ search_rule_docs, below)
   rag/
+    embeddings.py  the Ollama/Gemini embedding switch (see "Production" below)
     index.py    builds the Qdrant index - `python -m agent.rag.index`
-    retrieve.py search_rule_docs, wired into tools.TOOLS
+    retrieve.py search_rule_docs, lazy index build + invalidation, wired
+                into tools.TOOLS
   graph.py      the StateGraph: agent -> tools -> agent -> ... -> finalize/end
   __main__.py   `python -m agent "question"`
   mcp_server.py the same tools.TOOLS, registered under MCP instead of
@@ -275,8 +278,9 @@ START -> agent -> (has tool_calls? -> tools -> agent, loop)
                 -> (tool_calls AND step_count >= MAX_STEPS? -> finalize -> END)
 ```
 
-- **`agent` node**: calls `ChatOllama` with the three tools bound, increments
-  `step_count`.
+- **`agent` node**: calls the configured LLM (`ChatOllama` locally,
+  `ChatGroq` in production - see `_build_llm()` in `graph.py` and
+  "Production" below) with all six tools bound, increments `step_count`.
 - **`tools` node**: LangGraph's prebuilt `ToolNode` — executes whatever the
   model asked for, appends `ToolMessage`s to state.
 - **`finalize` node**: only reached at the step cap. Calls the model *once

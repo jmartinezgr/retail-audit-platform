@@ -213,9 +213,10 @@ export const api = {
   },
 
   agent: {
-    // Demo local únicamente - necesita Ollama y Qdrant corriendo en la
-    // máquina que sirve el backend (ver apps/agent/README.md). El
-    // backend responde 503 si el copiloto no está disponible ahí.
+    // Corre con Groq+Gemini en producción, con Ollama en local (ver
+    // apps/agent/README.md, "Production: Groq + Gemini + in-memory
+    // Qdrant"). El backend responde 503 si ninguno de los dos está
+    // disponible en el entorno que sirve esta request.
     ask: (question: string) =>
       request<AgentAskResponse>("/agent/ask", {
         method: "POST",

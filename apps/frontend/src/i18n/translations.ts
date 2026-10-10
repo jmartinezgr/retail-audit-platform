@@ -263,8 +263,8 @@ const en = {
 
   // Copilot (conversational agent, local demo only)
   "copilot.title": "Copilot",
-  "copilot.subtitle": "Ask questions about rules and audit results in plain language. Runs entirely locally (LangGraph + Ollama) — it never computes a result itself, every claim comes from a real tool call against this backend.",
-  "copilot.localBadge": "Local demo",
+  "copilot.subtitle": "Ask questions about rules and audit results in plain language — powered by LangGraph + Groq, with semantic search over rule docs (Gemini embeddings, an in-memory Qdrant index). It never computes a result itself, every claim comes from a real tool call against this backend. Running the project locally for development uses Ollama instead — see apps/agent/README.md.",
+  "copilot.badge": "Live",
   "copilot.placeholder": "e.g. Which rules failed most in the last batch?",
   "copilot.ask": "Ask",
   "copilot.thinking": "Thinking...",
@@ -274,10 +274,10 @@ const en = {
   "copilot.sample3": "Why did invoice FAC-0000010 fail?",
   "copilot.toolCallsLabel": "Tool calls used ({count})",
   "copilot.unavailableTitle": "Copilot unavailable",
-  "copilot.unavailableBody": "This backend doesn't have the local copilot set up (Ollama + Qdrant running on the same machine) — see apps/agent/README.md. This feature only works when running the project locally.",
+  "copilot.unavailableBody": "This backend's copilot isn't reachable right now — its LLM provider (Groq/Gemini in production, or Ollama locally) didn't respond. See apps/agent/README.md.",
   "copilot.genericError": "Something went wrong answering that. Please try again.",
-  "copilot.disabledTitle": "Not available on this hosted demo",
-  "copilot.disabledBody": "The copilot runs a local LLM (Ollama) and a local vector database (Qdrant) — it only works when the project runs on your own machine, not on this free-tier hosted backend. Clone the repo and follow the setup guide to try it for real.",
+  "copilot.disabledTitle": "Not available in this deployment",
+  "copilot.disabledBody": "This deployment doesn't have an LLM provider configured for the copilot (Groq + Gemini in production, or Ollama locally). Clone the repo and follow the setup guide to try it for real.",
   "copilot.disabledCta": "See how to run it locally",
 } as const
 
@@ -532,8 +532,8 @@ const es: Record<keyof typeof en, string> = {
 
   // Copiloto (agente conversacional, demo local únicamente)
   "copilot.title": "Copiloto",
-  "copilot.subtitle": "Haz preguntas sobre reglas y resultados de auditoría en lenguaje natural. Corre completamente en local (LangGraph + Ollama) — nunca calcula un resultado por sí mismo, cada afirmación viene de una llamada real a una tool contra este backend.",
-  "copilot.localBadge": "Demo local",
+  "copilot.subtitle": "Haz preguntas sobre reglas y resultados de auditoría en lenguaje natural — corre con LangGraph + Groq, con búsqueda semántica sobre la documentación de reglas (embeddings de Gemini, índice de Qdrant en memoria). Nunca calcula un resultado por sí mismo, cada afirmación viene de una llamada real a una tool contra este backend. Corriendo el proyecto en local para desarrollo usa Ollama en su lugar — ver apps/agent/README.md.",
+  "copilot.badge": "En vivo",
   "copilot.placeholder": "ej. ¿Qué reglas fallaron más en el último lote?",
   "copilot.ask": "Preguntar",
   "copilot.thinking": "Pensando...",
@@ -543,10 +543,10 @@ const es: Record<keyof typeof en, string> = {
   "copilot.sample3": "¿Por qué falló la factura FAC-0000010?",
   "copilot.toolCallsLabel": "Tools usadas ({count})",
   "copilot.unavailableTitle": "Copiloto no disponible",
-  "copilot.unavailableBody": "Este backend no tiene el copiloto local configurado (Ollama + Qdrant corriendo en la misma máquina) — ver apps/agent/README.md. Esta función solo funciona corriendo el proyecto en local.",
+  "copilot.unavailableBody": "El copiloto de este backend no responde ahora mismo — su proveedor de LLM (Groq/Gemini en producción, u Ollama en local) no contestó. Ver apps/agent/README.md.",
   "copilot.genericError": "Algo salió mal respondiendo eso. Intenta de nuevo.",
-  "copilot.disabledTitle": "No disponible en esta demo hosteada",
-  "copilot.disabledBody": "El copiloto corre un LLM local (Ollama) y una base de datos vectorial local (Qdrant) — solo funciona corriendo el proyecto en tu propia máquina, no en este backend gratuito hosteado. Clona el repo y sigue la guía de instalación para probarlo de verdad.",
+  "copilot.disabledTitle": "No disponible en este despliegue",
+  "copilot.disabledBody": "Este despliegue no tiene un proveedor de LLM configurado para el copiloto (Groq + Gemini en producción, u Ollama en local). Clona el repo y sigue la guía de instalación para probarlo de verdad.",
   "copilot.disabledCta": "Ver cómo correrlo en local",
 }
 

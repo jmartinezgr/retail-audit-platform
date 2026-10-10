@@ -11,12 +11,12 @@ import { api } from "@/lib/api"
 import { useI18n } from "@/lib/i18n"
 import type { AgentToolCall } from "@/types/api"
 
-// La demo hosteada (Vercel + Render) no tiene Ollama/Qdrant corriendo -
-// en vez de dejar que cada pregunta falle con un 503, esta build-time
-// flag (puesta en "false" solo en las env vars de Vercel, ver
-// .env.example) oculta el chat entero detrás de una explicación clara,
-// con instrucciones para correrlo en local. Default = habilitado (dev
-// local no necesita tocar nada).
+// El copiloto corre de verdad en el deploy principal (Groq + Gemini,
+// ver apps/agent/README.md) - esta build-time flag existe para un
+// deploy SIN esas keys configuradas (ej. un fork de alguien más): en
+// vez de dejar que cada pregunta falle con un 503, puesta en "false"
+// en las env vars de Vercel (ver .env.example) oculta el chat entero
+// detrás de una explicación clara. Default = habilitado.
 const COPILOT_AVAILABLE = import.meta.env.VITE_COPILOT_AVAILABLE !== "false"
 
 const AGENT_README_URL =
@@ -105,7 +105,7 @@ export function CopilotPage() {
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-xl font-semibold">{t("copilot.title")}</h1>
-            <Badge variant="secondary">{t("copilot.localBadge")}</Badge>
+            <Badge variant="secondary">{t("copilot.badge")}</Badge>
           </div>
           <p className="text-muted-foreground max-w-2xl text-sm">{t("copilot.subtitle")}</p>
         </div>
@@ -148,7 +148,7 @@ export function CopilotPage() {
       <div>
         <div className="flex flex-wrap items-center gap-2">
           <h1 className="text-xl font-semibold">{t("copilot.title")}</h1>
-          <Badge variant="secondary">{t("copilot.localBadge")}</Badge>
+          <Badge variant="secondary">{t("copilot.badge")}</Badge>
         </div>
         <p className="text-muted-foreground max-w-2xl text-sm">{t("copilot.subtitle")}</p>
       </div>
