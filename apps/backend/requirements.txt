@@ -1,4 +1,19 @@
 -e ../../packages/domain
+
+# Copiloto en producción (api/agent/) - subconjunto curado de
+# apps/agent/requirements.txt, NO el archivo completo: sin
+# langchain-ollama/mcp/pytest/xlsxwriter que ahí no hacen falta (Ollama
+# es solo para dev local, ver apps/agent/README.md). Verificado en un
+# venv limpio que estas 5 líneas instalan sin chocar con los pines de
+# abajo (pydantic se queda igual) antes de escribir esto - no copiado a
+# ciegas de un `pip freeze`, que en una máquina Windows arrastra basura
+# específica de esa plataforma (pywin32) que ni existe para Linux.
+httpx==0.28.1
+langchain-core==1.6.3
+langchain-groq==1.1.3
+langgraph==1.2.11
+qdrant-client==1.19.0
+
 annotated-doc==0.0.4
 annotated-types==0.7.0
 anyio==4.13.0

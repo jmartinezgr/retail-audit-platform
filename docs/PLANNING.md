@@ -691,6 +691,81 @@ con su evidencia medida documentada en `apps/agent/README.md`.
      relativa al propio archivo. Verificado end-to-end con el backend y
      Ollama reales corriendo (pregunta real respondida en el chat, con
      su tool-call visible), no solo con mocks.
+   - ✅ El copiloto en producción de verdad (2026-10-10): hasta acá
+     `/app/copilot` solo funcionaba en local - en Render respondía 503
+     siempre, porque no hay Ollama ni Qdrant ahí. Motivación: el usuario
+     consiguió una API key gratuita de Groq y otra de Google AI Studio y
+     pidió usarlas para que el copiloto funcionara de verdad en el
+     deploy real, no solo como demo local - sin pagar nada ni pedir
+     tarjeta de crédito en ningún servicio nuevo. `LLM_PROVIDER=groq`
+     (chat, vía `langchain-groq`) + `EMBED_PROVIDER=gemini`
+     (embeddings, vía `httpx` crudo, no `langchain-google-genai` - un
+     SDK menos por cargar) + `QDRANT_URL=":memory:"` (Qdrant embebido,
+     sin servidor aparte, índice en RAM del propio proceso, construido
+     solo en el primer uso real). Todo verificado en vivo antes de
+     escribir código: qué modelo de Groq soporta tool-calling real
+     (`openai/gpt-oss-20b`, confirmado con una llamada directa a su API
+     - varios nombres de modelos de tutoriales ya no existen), la
+     dimensión real de los embeddings de Gemini (3072, no la asumida -
+     `text-embedding-004` también está retirado), y que `ChatGroq` +
+     `bind_tools()` devuelve un `AIMessage` con `tool_calls` reales, no
+     solo texto.
+     - **Dos bugs reales encontrados probando de punta a punta, no
+       solo asumidos arreglados**: `QdrantClient(url=":memory:")`
+       revienta (`url=` fuerza parseo de URL remota) - hay que pasarlo
+       por `location=`, el único parámetro que detecta el modo especial.
+       Y una condición de carrera real: dos preguntas con RAG llegando
+       casi a la vez mientras el índice todavía no existía dispararon
+       cada una su propio `build_index()` en paralelo (reproducido sin
+       querer durante las propias pruebas) - `/agent/ask` es
+       intencionalmente `def`, no `async def` (para no bloquear el
+       event loop con la llamada bloqueante a `graph.invoke()`, ver
+       `apps/agent/README.md`), así que el threadpool de FastAPI sí
+       permite más de una pregunta al mismo tiempo aunque Render corra
+       con `WEB_CONCURRENCY=1` (un proceso, no un hilo). Arreglado con
+       un `threading.Lock()` (double-checked locking) en
+       `agent/rag/retrieve.py`, cubierto por un test que lanza 5 hilos a
+       la vez.
+     - **Rendimiento medido y arreglado, no solo correcto**: la primera
+       versión de los embeddings de Gemini hacía una llamada HTTP por
+       chunk - indexar los ~40 chunks reales tardaba ~45s (reconstrucción
+       perezosa real, con un usuario esperando esa respuesta HTTP).
+       Cambiado al endpoint en lote de Gemini (`batchEmbedContents`, una
+       sola llamada), medido en vivo: ~2.5s para 45 textos. El mismo
+       flujo completo (pregunta → RAG → respuesta) bajó de 49s a ~12s.
+     - `BACKEND_BASE_URL` en `agent/settings.py` ahora se arma solo
+       (`http://127.0.0.1:{PORT}`, leyendo la variable que Render ya
+       inyecta) en vez de requerir una env var nueva a mano - evita que
+       la llamada que el agente se hace a sí mismo (sus tools le pegan
+       al mismo backend por HTTP) salga a internet y vuelva por el borde
+       de Render sin necesidad.
+     - Rate limit nuevo en `POST /agent/ask` (10 preguntas/hora por IP,
+       contador en memoria, IP real leída de `X-Forwarded-For`) para
+       cuidar la cuota gratis de Groq/Gemini - funciona como un solo
+       contador en memoria justamente porque Render corre este servicio
+       con `WEB_CONCURRENCY=1`, documentado como supuesto explícito en
+       el código.
+     - **Memoria medida, no asumida** (preocupación real: Render free
+       son 512MB, y el backend ya corre Polars/DeltaLake/DuckDB/PyArrow):
+       `apps/backend/requirements.txt` instala un subconjunto curado de
+       las dependencias del agente (`langchain-core`, `langgraph`,
+       `langchain-groq`, `qdrant-client`, `httpx` - sin
+       `langchain-ollama`/`mcp`/`pytest`), armado instalando esas 5
+       sobre el stack ya pinneado del backend y confirmando que no
+       chocaba nada antes de escribirlo - no copiado de un `pip freeze`
+       en Windows, que arrastra basura de esa plataforma
+       (`pywin32`) que ni existe en el Linux de Render. Medido en una
+       corrida real: ~113MB al arrancar, ~203MB tras la primera
+       pregunta (carga del agente + construcción fría del índice RAG),
+       estable (no sigue creciendo) después de varias preguntas más.
+     - `VITE_COPILOT_AVAILABLE` en el frontend vuelve a su default
+       (habilitado) en el deploy real una vez configuradas las env vars
+       de Render - el copiloto ya no está oculto en producción, solo se
+       oculta si esas keys no están puestas en un entorno dado.
+     - 33 tests en total entre `apps/agent` (29) y la nueva suite de
+       `apps/backend/tests/api/agent/` (4, rate limit). Detalle completo
+       en `apps/agent/README.md`, sección "Production: Groq + Gemini +
+       in-memory Qdrant".
 
 ## 11. Abierto / por decidir más adelante
 

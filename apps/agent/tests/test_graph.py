@@ -1,12 +1,13 @@
 """Integration test for the graph's plumbing - routing, step counting,
 the tool-call loop, and the step cap. The LLM is scripted (not a real
-Ollama call) and the tool's HTTP call is mocked, so this asserts on the
-tool-call sequence and message shape, never on the model's actual
+Ollama/Groq call) and the tool's HTTP call is mocked, so this asserts on
+the tool-call sequence and message shape, never on the model's actual
 wording (per docs/copilot-spec.md's testing section)."""
 
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 from agent import graph as graph_module
+from agent import settings as settings_module
 from agent import tools
 
 
@@ -84,3 +85,28 @@ def test_graph_stops_at_step_cap_with_a_partial_answer(monkeypatch):
 
     assert result["step_count"] == 3
     assert result["messages"][-1].content == "Here's a partial answer based on what I found so far."
+
+
+def test_build_llm_picks_groq_when_configured(monkeypatch):
+    """LLM_PROVIDER="groq" debe construir un ChatGroq, no un ChatOllama -
+    sin esto, producción (sin Ollama) intentaría hablarle a
+    localhost:11434 y fallaría siempre."""
+    monkeypatch.setattr(settings_module.settings, "LLM_PROVIDER", "groq")
+    monkeypatch.setattr(settings_module.settings, "GROQ_API_KEY", "fake-key")
+    monkeypatch.setattr(settings_module.settings, "GROQ_MODEL", "openai/gpt-oss-20b")
+
+    llm = graph_module._build_llm()
+
+    from langchain_groq import ChatGroq
+
+    assert isinstance(llm, ChatGroq)
+
+
+def test_build_llm_defaults_to_ollama(monkeypatch):
+    assert settings_module.settings.LLM_PROVIDER == "ollama"
+
+    llm = graph_module._build_llm()
+
+    from langchain_ollama import ChatOllama
+
+    assert isinstance(llm, ChatOllama)

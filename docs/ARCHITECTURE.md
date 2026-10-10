@@ -1033,3 +1033,60 @@ React y no puede llamar a `useI18n()`.
   503 real contra el backend de Render (que no tiene Ollama/Qdrant).
   Verificado localmente simulando prod (`.env.local` con la flag en
   `"false"`, capturado con Playwright, revertido después).
+
+- **2026-10-10**: el copiloto pasa de "demo local" a correr de verdad en
+  producción - `LLM_PROVIDER`/`EMBED_PROVIDER` en `agent/settings.py`
+  eligen entre Ollama (local, default) y proveedores gratuitos hosteados
+  sin tarjeta: Groq (`langchain-groq`, modelo `openai/gpt-oss-20b` -
+  verificado en vivo que hace tool-calling real antes de elegirlo, el
+  catálogo de modelos de Groq cambia seguido) para el chat, y Gemini
+  (`httpx` crudo, no `langchain-google-genai`, para no cargar ese SDK
+  completo en un proceso con memoria acotada) para embeddings -
+  `gemini-embedding-001`, 3072 dimensiones, también confirmado en vivo
+  (`text-embedding-004` ya no existe). Qdrant pasa a modo embebido
+  (`QDRANT_URL=":memory:"`, sin servidor, índice en RAM del proceso),
+  construido perezosamente en el primer `search_rule_docs` real -
+  `api/rules/service.py` ahora llama `invalidate_rag_index()` (mejor
+  esfuerzo, nunca rompe un create/update/delete) tras cada cambio de
+  regla dinámica, para que la siguiente pregunta reconstruya con datos
+  vigentes en vez de sobre un índice obsoleto.
+
+  Dos bugs reales encontrados probando de punta a punta: (1)
+  `QdrantClient(url=":memory:")` revienta - `url=` fuerza parseo de URL
+  remota, hay que pasarlo por `location=`, el único parámetro que
+  detecta `":memory:"` vs. una ruta vs. una URL real. (2) una condición
+  de carrera real - dos preguntas con RAG llegando casi a la vez
+  mientras el índice no existía todavía dispararon cada una su propio
+  `build_index()` en paralelo (reproducido sin querer en las propias
+  pruebas, no hipotético): `POST /agent/ask` es intencionalmente `def`
+  y no `async def` (para que la llamada bloqueante a `graph.invoke()`
+  no bloquee el event loop - importa porque las tools del agente le
+  pegan por HTTP al mismo backend, una llamada que se haría a sí misma
+  si fuera `async def` bloqueante), así que el threadpool de FastAPI sí
+  permite más de una pregunta en vuelo a la vez, incluso con
+  `WEB_CONCURRENCY=1` de Render (un proceso, no un hilo). Arreglado con
+  un `threading.Lock()` (double-checked locking) en
+  `agent/rag/retrieve.py`, cubierto por un test que lanza 5 hilos a la
+  vez contra `_ensure_index()`.
+
+  También medido, no asumido: indexar embeddings uno a la vez tardaba
+  ~45s para los ~40 chunks reales (reconstrucción perezosa, con un
+  usuario esperando esa respuesta HTTP) - cambiado al endpoint en lote
+  de Gemini (`batchEmbedContents`), ~2.5s medido para 45 textos; el
+  flujo completo pregunta→RAG→respuesta bajó de 49s a ~12s. Y la
+  memoria: `apps/backend/requirements.txt` instala un subconjunto
+  curado de las dependencias del agente (`langchain-core`, `langgraph`,
+  `langchain-groq`, `qdrant-client`, `httpx` - sin
+  `langchain-ollama`/`mcp`/`pytest`, armado instalando esas 5 sobre el
+  stack ya pinneado del backend para confirmar que no chocaba nada, no
+  copiado de un `pip freeze` en Windows que arrastra basura de esa
+  plataforma como `pywin32`); medido en una corrida real: ~113MB al
+  arrancar, ~203MB tras la primera pregunta, estable después de varias
+  más - cómodo bajo el límite de 512MB del free tier de Render.
+  `BACKEND_BASE_URL` ahora se arma solo con `http://127.0.0.1:{PORT}`
+  (leyendo la variable que Render ya inyecta) para que esa llamada del
+  agente a sí mismo nunca salga a internet. `POST /agent/ask` suma un
+  rate limit de 10 preguntas/hora por IP (contador en memoria,
+  `X-Forwarded-For`) para cuidar la cuota gratis de ambos proveedores -
+  funciona como contador único justamente porque Render corre un solo
+  proceso.

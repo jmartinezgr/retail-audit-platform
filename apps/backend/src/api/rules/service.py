@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from domain.catalog import Categoria
 from domain.rules.dynamic import CAMPOS_CABECERA, CAMPOS_ITEM
 from domain.rules.engine import NOMBRES_REGLAS_ESTATICAS
+from src.api.agent.service import invalidate_rag_index
 from src.infrastructure.db.catalog.repository import CatalogRepository
 from src.infrastructure.db.rules.models import RuleDefinitionModel
 from src.infrastructure.db.rules.repository import RuleDefinitionRepository
@@ -57,7 +58,9 @@ class RuleService:
     def create_rule(self, data: dict) -> RuleDefinitionModel:
         data = {**data, "activa": True}
         self._validar(data, excluir_id=None)
-        return self.repo.create(data)
+        created = self.repo.create(data)
+        invalidate_rag_index()
+        return created
 
     def update_rule(self, rule_id: int, data: dict) -> RuleDefinitionModel:
         existing = self.repo.get(rule_id)
@@ -66,10 +69,15 @@ class RuleService:
         merged = {field: getattr(existing, field) for field in _EDITABLE_FIELDS}
         merged.update(data)
         self._validar(merged, excluir_id=rule_id)
-        return self.repo.update(rule_id, merged)
+        updated = self.repo.update(rule_id, merged)
+        invalidate_rag_index()
+        return updated
 
     def delete_rule(self, rule_id: int) -> bool:
-        return self.repo.delete(rule_id)
+        deleted = self.repo.delete(rule_id)
+        if deleted:
+            invalidate_rag_index()
+        return deleted
 
     def _validar(self, data: dict, excluir_id: int | None) -> None:
         nombre = data.get("nombre")

@@ -10,7 +10,8 @@ MCP) — all explained below, with the real evidence that made each
 addition (or fix) necessary. Beyond the spec's 4 phases, there's also a
 minimal chat UI in the main frontend (`/app/copilot`) backed by a new
 `POST /agent/ask` on the backend — see "Chat UI — a third consumer"
-below.
+below — and it actually runs in production now, not just locally: see
+"Production: Groq + Gemini + in-memory Qdrant".
 
 ## What it does
 
@@ -422,26 +423,21 @@ answer.
 answer shows the exact tool call and raw result, not a mocked example.*
 
 This is a third consumer of `tools.py`/`graph.py`, same principle as
-MCP - "one definition, three consumers" by this point. It's still a
-local-only demo: the backend imports `agent.graph` by adding
-`apps/agent` to `sys.path` at request time (same trick as connecting an
-MCP client without a `--cwd` flag, see above), so Render's deployed
-backend doesn't need `langgraph`/`qdrant-client`/etc. installed unless
-someone actually uses the chat - it returns a 503 with a readable
-message if the import fails or if Ollama/Qdrant aren't reachable when
-the graph actually runs. To use it locally: install this app's
-`requirements.txt` into the backend's own venv too
+MCP - "one definition, three consumers" by this point. The backend
+imports `agent.graph` by adding `apps/agent` to `sys.path` at request
+time (same trick as connecting an MCP client without a `--cwd` flag,
+see above), not by installing all of `apps/agent` as a dependency - it
+returns a 503 with a readable message if the import fails or if the
+configured LLM provider isn't reachable when the graph actually runs.
+To use it locally: install this app's `requirements.txt` into the
+backend's own venv too
 (`apps/backend/venv/Scripts/pip install -r ../agent/requirements.txt`),
 since the import happens inside the backend's process, not a separate
 one.
 
-**Hidden on the hosted demo, on purpose**: the deployed frontend
-(Vercel) always ships `VITE_COPILOT_AVAILABLE=false`, which makes
-`/app/copilot` render a short "run this locally" notice with a link
-back to this README instead of a chat that would just 503 on every
-question - the deployed Render backend has no Ollama/Qdrant to talk to.
-Local dev needs nothing set (any value other than the literal string
-`"false"` counts as enabled) - see `apps/frontend/.env.example`.
+**This now runs for real in production**, not just as a local demo -
+see "Production: Groq + Gemini + in-memory Qdrant" below for how and
+what it took to get there.
 
 **A real bug found wiring this up**: `agent/settings.py` loaded its
 `.env` with a relative path (`env_file=".env"`), which
@@ -455,6 +451,125 @@ not permitted" for every one of those keys. Fixed by resolving the
 `.env` path absolutely, relative to `settings.py` itself
 (`Path(__file__).resolve().parent.parent / ".env"`), so it no longer
 depends on which process imports it.
+
+## Production: Groq + Gemini + in-memory Qdrant
+
+The deployed Render backend has no Ollama and no Qdrant server - so
+production uses different, free, no-credit-card providers instead of
+just disabling the copilot there:
+
+- **Chat**: Groq (`LLM_PROVIDER=groq`) via `langchain-groq`. Model:
+  `openai/gpt-oss-20b` - verified live, not assumed, that it does real
+  structured tool-calling (OpenAI-compatible `tool_calls`, not prose)
+  and that its final text answer lands in `AIMessage.content` (the
+  model's internal reasoning goes separately into
+  `additional_kwargs["reasoning_content"]`, never mixed into the
+  answer). Groq's model lineup changes often (confirmed live: several
+  previously-documented model names were already gone), so this was
+  checked against the real `/v1/models` endpoint, not copied from docs.
+- **Embeddings**: Gemini (`EMBED_PROVIDER=gemini`) via raw `httpx`
+  calls (`agent/rag/embeddings.py`), not `langchain-google-genai` - one
+  less heavy SDK (protobuf/grpc) in a memory-constrained process.
+  Model: `gemini-embedding-001`, 3072 dimensions - also verified live
+  (`text-embedding-004`, the name in most tutorials, is gone; `v1beta`
+  returns a 404 pointing at `ListModels` when you ask for a retired
+  one). Indexing (`embed_documents`) uses Gemini's batch endpoint
+  (`batchEmbedContents`, one HTTP call for every chunk) instead of one
+  call per chunk - the first version did one call per chunk and a cold
+  index build took ~45s; batched, the same ~40 chunks take ~2.5s.
+  Queries (`embed_query`) use `taskType: RETRIEVAL_QUERY` vs.
+  `RETRIEVAL_DOCUMENT` for indexing - Gemini's embeddings are
+  asymmetric, this matters for retrieval quality.
+- **Vector search**: Qdrant in embedded mode (`QDRANT_URL=":memory:"`)
+  - `qdrant_client.QdrantClient` without a server, index lives in this
+    process's RAM. Built lazily, on the first real `search_rule_docs`
+    call (the backend has to be up first, so it can't happen at import
+    time), not via a manual `python -m agent.rag.index` step - there's
+    no shell on Render to run that by hand. `apps/backend/src/api/rules/service.py`
+    calls `invalidate_rag_index()` after every dynamic rule
+    create/update/delete, which doesn't rebuild immediately - it just
+    marks the index stale so the *next* real question rebuilds it with
+    current rules.
+
+**Two real bugs found getting this to actually work, not just assumed
+fixed**:
+
+1. `QdrantClient(url=":memory:")` raises `urllib3.exceptions.LocationParseError: Failed to parse: :memory:`
+   - `url=` forces remote-URL parsing. The special value only works
+   through the first positional parameter, `location=`, which
+   auto-detects `":memory:"` vs. a path vs. a real URL. Verified live
+   with both modes before settling on `location=` everywhere.
+2. **A real concurrency race**, reproduced by accident while testing:
+   two overlapping `/agent/ask` requests that both hit `search_rule_docs`
+   before the lazy index existed yet each independently saw
+   `_index_ready == False` and both kicked off a full `build_index()` -
+   two Gemini batch calls racing each other, visible in the backend log
+   as two separate `GET /rules/static` fetches a request apart. This
+   can happen even with Render's `WEB_CONCURRENCY=1`: that's one
+   *process*, not one thread - `/agent/ask` is a plain `def` (not
+   `async def`) specifically so FastAPI runs it in its threadpool
+   instead of blocking the event loop (see the loopback note below),
+   and a threadpool means more than one request really can be in
+   flight at once. Fixed with a `threading.Lock()` around the
+   check-and-build in `agent/rag/retrieve.py` (`_ensure_index`,
+   double-checked locking) - covered by
+   `test_ensure_index_is_safe_under_concurrent_calls`, which starts 5
+   threads at once and asserts `build_index` only actually ran once.
+
+**Why `/agent/ask` stays a plain `def`, and why `BACKEND_BASE_URL`
+matters in prod**: the tools in this same request call back into the
+*same* backend over HTTP (`agent/tools.py`, `httpx.get`/`post` against
+`BACKEND_BASE_URL`) - that's a self-referential HTTP call from inside
+one process's single request handler. If the route were `async def`
+with a blocking call to `graph.invoke()` inside it, that self-call
+would be competing for the one event loop the whole server depends on
+to accept any connection, including its own callback - a real deadlock
+risk, not a hypothetical one. A plain `def` runs in Starlette's
+threadpool instead, so the inner self-call is served by a different
+thread while the outer one blocks waiting - verified locally by running
+the backend with a single worker (no `--workers` flag, same topology as
+Render's `WEB_CONCURRENCY=1`) and confirming a real `/agent/ask` call
+that round-trips through several of its own endpoints completes
+normally. `BACKEND_BASE_URL` defaults to `http://127.0.0.1:{PORT}` in
+`agent/settings.py` (`PORT` is whatever Render assigns the process at
+runtime, read automatically - nothing to configure by hand) instead of
+the service's public Render URL, so that self-call never leaves the
+machine or goes through Render's edge/proxy for no reason.
+
+**Rate limiting**: `POST /agent/ask` caps each IP at 10 questions/hour
+(`apps/backend/src/api/agent/router.py`, in-memory sliding window,
+real client IP read from `X-Forwarded-For` since Render sits in front
+of the process) - there to protect Groq/Gemini's free-tier quotas from
+one visitor hammering the endpoint, not a security feature. Works as a
+single in-memory counter specifically *because* Render runs this
+service with `WEB_CONCURRENCY=1` (one process) - with more than one
+worker each would keep its own counter and the real limit would be
+N× higher; documented as an explicit assumption in the code, not a
+silent one.
+
+**Memory, measured, not guessed**: Render's free tier is 512MB.
+`apps/backend/requirements.txt` installs a curated subset of this
+app's dependencies for production (`langchain-core`, `langgraph`,
+`langchain-groq`, `qdrant-client`, `httpx` - no `langchain-ollama`,
+`mcp`, `pytest`, or anything dev/test-only), built and verified by
+installing just those five into a venv that already had the backend's
+existing pinned stack and confirming nothing conflicted (`pydantic`
+stayed at its existing pin) before writing the final list - not copied
+from a raw `pip freeze`, which on a Windows dev machine pulls in
+platform junk (`pywin32`) that doesn't even exist on Render's Linux.
+Measured on a real run: ~113MB at boot, ~203MB after the first
+copilot question (loading the agent code + a cold RAG index build),
+stable (not growing) across several more questions after that -
+comfortable headroom under 512MB, confirmed live rather than assumed
+safe from the dependency list alone.
+
+**What still only works locally**: nothing, as long as `GROQ_API_KEY`
+and `GOOGLE_API_KEY` are set wherever the backend runs - if they're
+not set, `LLM_PROVIDER`/`EMBED_PROVIDER` default to `ollama`, which
+degrades the same way it always did (503, readable message) when
+Ollama isn't reachable. Local dev keeps using Ollama by default,
+nothing changes there unless you explicitly set `LLM_PROVIDER=groq`/
+`EMBED_PROVIDER=gemini` in your own `.env`.
 
 ## Setup
 
@@ -484,14 +599,27 @@ by design, see "Architecture" above.
 python -m pytest -v
 ```
 
-21 tests: unit tests for all six tools (backend mocked at the `httpx`
+29 tests: unit tests for all six tools (backend mocked at the `httpx`
 boundary, Qdrant/embeddings mocked for `search_rule_docs` — same standard
 as `packages/domain`'s 100 tests), the MCP server's tool registration
 (`test_mcp_server.py`, verifies the same 6 tools/names/descriptions are
 exposed — the actual protocol round-trip was verified by hand with a
-real MCP client, see "MCP server" above), plus two graph integration
+real MCP client, see "MCP server" above), four graph integration
 tests with the LLM itself scripted — asserting on the tool-call
-sequence and message shape (`test_graph_calls_tool_then_answers`), and on
+sequence and message shape (`test_graph_calls_tool_then_answers`), on
 the step cap producing a partial answer instead of hanging
-(`test_graph_stops_at_step_cap_with_a_partial_answer`) — never on a real
-model's exact wording, which isn't deterministic.
+(`test_graph_stops_at_step_cap_with_a_partial_answer`), and on which
+provider class `_build_llm()` actually constructs for `LLM_PROVIDER`
+`groq`/`ollama` — never on a real model's exact wording, which isn't
+deterministic — plus `test_embeddings.py` (the Groq/Gemini provider
+switch, mocked at the `httpx` boundary) and the lazy RAG index build:
+builds once and only once across repeated calls
+(`test_search_rule_docs_builds_index_lazily_once`), rebuilds after
+`invalidate_index()`, and stays correct under 5 concurrent threads
+racing to build it at once
+(`test_ensure_index_is_safe_under_concurrent_calls` — this is the real
+race condition described in "Production" above, not a hypothetical
+test). A separate small suite in `apps/backend/tests/api/agent/` covers
+the rate limiter (per-IP window, `X-Forwarded-For` parsing, the proxy
+IP itself never counted) against a minimal FastAPI app mounting just
+that router — no Postgres/MinIO needed for those.

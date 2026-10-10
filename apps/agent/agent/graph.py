@@ -9,7 +9,6 @@ letting the loop continue (see docs/copilot-spec.md, restriction #4).
 from typing import Literal
 
 from langchain_core.messages import AIMessage, SystemMessage
-from langchain_ollama import ChatOllama
 from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import ToolNode
 
@@ -34,7 +33,23 @@ given. Never state a different count of your own by re-scanning a list \
 - if you do this, double-check it actually matches before writing it \
 down.""")
 
-_llm = ChatOllama(base_url=settings.OLLAMA_BASE_URL, model=settings.OLLAMA_MODEL, temperature=0)
+def _build_llm():
+    """Import diferido a propósito, no a nivel de módulo: en producción
+    el backend no tiene langchain-ollama instalado (no hace falta ahí,
+    ver apps/agent/README.md), así que importarlo incondicionalmente
+    rompería el arranque entero del proceso - mismo bug real que ya se
+    encontró y arregló una vez con langchain_core en
+    apps/backend/src/api/agent/service.py, no repetirlo acá."""
+    if settings.LLM_PROVIDER == "groq":
+        from langchain_groq import ChatGroq
+
+        return ChatGroq(model=settings.GROQ_MODEL, api_key=settings.GROQ_API_KEY, temperature=0)
+    from langchain_ollama import ChatOllama
+
+    return ChatOllama(base_url=settings.OLLAMA_BASE_URL, model=settings.OLLAMA_MODEL, temperature=0)
+
+
+_llm = _build_llm()
 _llm_with_tools = _llm.bind_tools(TOOLS)
 
 

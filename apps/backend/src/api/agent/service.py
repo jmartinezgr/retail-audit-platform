@@ -1,12 +1,23 @@
-"""Wrapper del copiloto (apps/agent, LangGraph + Ollama) como servicio del
-backend - demo local únicamente (ver apps/agent/README.md y el README
-raíz): necesita Ollama y Qdrant corriendo en la máquina, algo que no
-existe en el deploy de Render. Importa `agent.graph` metiendo apps/agent
-al sys.path en vez de instalar apps/agent como dependencia del backend
-(mismo problema que el server MCP - ver apps/agent/agent/mcp_server.py -
-y misma solución), así el backend de producción no carga langgraph,
-langchain-ollama, qdrant-client, etc. si nadie usa el chat. El import
-real solo ocurre la primera vez que se llama a este endpoint.
+"""Wrapper del copiloto (apps/agent, LangGraph) como servicio del backend.
+
+En local, por defecto corre 100% con Ollama (chat + embeddings) y un
+Qdrant propio - ver apps/agent/README.md. En producción (Render) usa
+proveedores gratuitos hosteados en vez de nada local: Groq para el chat
+(LLM_PROVIDER=groq, tool-calling real, verificado en vivo) y Gemini para
+embeddings (EMBED_PROVIDER=gemini, llamada HTTP directa, sin SDK
+pesado), con Qdrant en modo ":memory:" (QDRANT_URL=":memory:", sin
+servidor aparte, índice en RAM del propio proceso, se construye solo en
+el primer uso real - ver agent/rag/retrieve.py). Si esas env vars no
+están puestas en el entorno, cae a 503 con un mensaje claro en vez de
+reventar - sigue siendo opcional, no una dependencia dura del backend.
+
+Importa `agent.graph` metiendo apps/agent al sys.path en vez de
+instalarlo como dependencia declarada del backend (mismo problema que el
+server MCP - ver apps/agent/agent/mcp_server.py - y misma solución), así
+el backend de producción solo carga lo que realmente hace falta para
+correr el copiloto (ver requirements.txt - subconjunto curado, sin
+langchain-ollama/mcp/pytest que ahí no pintan nada) y nada más si nadie
+usa el chat.
 """
 
 import json
@@ -19,24 +30,45 @@ _graph = None
 
 
 class AgentUnavailableError(Exception):
-    """El copiloto local no está disponible en este entorno - o no están
-    instaladas las dependencias de apps/agent, o Ollama/Qdrant no están
-    corriendo. Se traduce a un 503 en el router."""
+    """El copiloto no está disponible en este entorno - dependencias de
+    apps/agent no instaladas, o el proveedor configurado (Ollama local,
+    o Groq/Gemini en prod) no responde. Se traduce a un 503 en el
+    router."""
+
+
+def _ensure_agent_importable() -> None:
+    if str(_AGENT_APP_DIR) not in sys.path:
+        sys.path.insert(0, str(_AGENT_APP_DIR))
 
 
 def _get_graph():
     global _graph
     if _graph is None:
-        if str(_AGENT_APP_DIR) not in sys.path:
-            sys.path.insert(0, str(_AGENT_APP_DIR))
+        _ensure_agent_importable()
         try:
             from agent.graph import build_graph
         except ImportError as e:
             raise AgentUnavailableError(
-                f"el copiloto local no está disponible en este entorno: {e}"
+                f"el copiloto no está disponible en este entorno: {e}"
             )
         _graph = build_graph()
     return _graph
+
+
+def invalidate_rag_index() -> None:
+    """Mejor esfuerzo, nunca debe romper un create/update/delete de regla
+    dinámica (ver api/rules/service.py) - si el copiloto no está
+    configurado en este entorno, o su índice RAG ni se ha construido
+    todavía, esto simplemente no hace nada. No reconstruye de una vez,
+    solo marca el índice como desactualizado para la próxima pregunta
+    real que use search_rule_docs (ver agent/rag/retrieve.py)."""
+    try:
+        _ensure_agent_importable()
+        from agent.rag.retrieve import invalidate_index
+
+        invalidate_index()
+    except Exception:
+        pass
 
 
 def ask(question: str) -> dict:
@@ -56,7 +88,8 @@ def ask(question: str) -> dict:
         result = graph.invoke(state)
     except Exception as e:
         raise AgentUnavailableError(
-            f"el copiloto no pudo responder - ¿está Ollama corriendo? ({e})"
+            f"el copiloto no pudo responder - revisa que el LLM configurado "
+            f"(Ollama local, o Groq/Gemini en prod) esté disponible: {e}"
         )
 
     messages = result["messages"]
