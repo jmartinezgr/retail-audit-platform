@@ -1,6 +1,7 @@
 import { Laptop, Loader2, Send, Wrench } from "lucide-react"
 import { useState } from "react"
 import Markdown from "react-markdown"
+import remarkGfm from "remark-gfm"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -22,8 +23,12 @@ const COPILOT_AVAILABLE = import.meta.env.VITE_COPILOT_AVAILABLE !== "false"
 const AGENT_README_URL =
   "https://github.com/jmartinezgr/retail-audit-platform/blob/main/apps/agent/README.md"
 
-// El modelo responde en Markdown (negrita, listas) - sin esto se veía el
-// "**texto**" literal en vez de negrita. Sin plugin de tipografía de
+// El modelo responde en Markdown (negrita, listas, tablas) - sin esto
+// se veía el "**texto**" literal en vez de negrita, y una tabla salía
+// como texto con "|" literales en vez de una tabla real (las tablas son
+// GFM, no markdown básico - react-markdown no las soporta sin
+// remark-gfm, encontrado en vivo preguntándole al copiloto algo que
+// de verdad respondió con una tabla). Sin plugin de tipografía de
 // Tailwind en este proyecto, así que los estilos van directo por
 // `components` en vez de una clase `prose`.
 const MARKDOWN_COMPONENTS = {
@@ -35,6 +40,15 @@ const MARKDOWN_COMPONENTS = {
   code: (props: React.ComponentProps<"code">) => (
     <code className="bg-muted rounded px-1 py-0.5 font-mono text-xs" {...props} />
   ),
+  table: (props: React.ComponentProps<"table">) => (
+    <div className="mb-2 overflow-x-auto">
+      <table className="w-full border-collapse text-xs" {...props} />
+    </div>
+  ),
+  th: (props: React.ComponentProps<"th">) => (
+    <th className="border-border border px-2 py-1 text-left font-semibold" {...props} />
+  ),
+  td: (props: React.ComponentProps<"td">) => <td className="border-border border px-2 py-1" {...props} />,
 }
 
 interface Turn {
@@ -187,7 +201,9 @@ export function CopilotPage() {
                     </div>
                   ) : turn.answer !== undefined ? (
                     <div>
-                      <Markdown components={MARKDOWN_COMPONENTS}>{turn.answer}</Markdown>
+                      <Markdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>
+                        {turn.answer}
+                      </Markdown>
                       {turn.toolCalls && (
                         <ToolCallsDisclosure
                           toolCalls={turn.toolCalls}
