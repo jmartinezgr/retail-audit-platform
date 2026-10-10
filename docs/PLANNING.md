@@ -429,7 +429,13 @@ Script Python (Faker + numpy) que:
 - **Frontend**: Vercel (gratis).
 - **Backend**: Render free web service (o Fly.io) — se duerme tras
   inactividad, aceptable para demo de portafolio con una nota de "puede
-  tardar ~30s en despertar".
+  tardar ~30s en despertar". **2026-10-10**: agregado un monitor de
+  uptime externo que le pega a `GET /healthz` cada 5 minutos - mantiene
+  el servicio despierto para que alguien evaluando el proyecto (ej. un
+  reclutador abriendo el link) casi nunca vea el cold-start, sin pagar
+  nada. La nota de "puede tardar ~30s" se queda como fallback real
+  (deploy en curso, o el monitor pierde un ciclo), no como la
+  experiencia esperada.
 - **Postgres**: Neon (gratis, sin el límite de 90 días que tiene el Postgres
   free de Render). **Verificado (2026-09-04)**: proyecto Neon nuevo
   (`auditlake`), corriendo el código real de la app contra él —

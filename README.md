@@ -158,7 +158,7 @@ docker-compose.yml     # local Postgres + MinIO
 
 ## Deployment
 
-Frontend on Vercel, backend on Render, Postgres on Neon, storage on Cloudflare R2 — all free tier. The backend sleeps after inactivity, so the first request after a while can take up to ~30s; the app absorbs that with retries and a loading hint instead of surfacing an error.
+Frontend on Vercel, backend on Render, Postgres on Neon, storage on Cloudflare R2 — all free tier. Render's free tier sleeps a service after inactivity, so the first request after a while could otherwise take up to ~30s; a lightweight uptime monitor pings `/healthz` every 5 minutes to keep the backend warm so a visitor arriving cold (a recruiter clicking the live link, say) doesn't have to wait on it. The app still absorbs a slow first request with retries and a loading hint instead of surfacing an error, for the rare case the backend was mid-deploy or the monitor missed a beat.
 
 The Copilot runs there too: Render's backend talks to Groq (chat) and Google AI Studio/Gemini (embeddings) instead of local Ollama/Qdrant, both free tiers, no credit card — see "Production: Groq + Gemini + in-memory Qdrant" in [`apps/agent/README.md`](apps/agent/README.md). If those API keys aren't configured in a given deploy, `/app/copilot` falls back to a short "run this locally" notice (`VITE_COPILOT_AVAILABLE=false` in that frontend's env) instead of a chat that would just fail on every question.
 
