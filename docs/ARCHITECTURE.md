@@ -1130,3 +1130,29 @@ React y no puede llamar a `useI18n()`.
   como antes, sin caso especial en el código. Detalle completo en
   `apps/agent/README.md`, sección "Session-scoped datasets: context
   propagation, not dependency injection".
+
+- **2026-10-14**: reintento ante timeouts transitorios de Render en las
+  tools del agente, visto en vivo más de una vez, no hipotético -
+  `GET /healthz` respondía en menos de un segundo (el backend no estaba
+  dormido, el bot de uptime lo mantiene despierto), pero la siguiente
+  pregunta real seguía fallando con `"couldn't reach the backend: timed
+  out"`. No era cold-start - era el free tier de Render reseteando una
+  conexión o respondiendo lento de forma transitoria bajo carga,
+  independiente de si el servicio está despierto o no. El frontend ya
+  maneja esto mismo (`apps/frontend/src/lib/api.ts`'s `request()`
+  reintenta GETs idempotentes una o dos veces con backoff), pero las
+  tools del agente nunca tuvieron esa red de seguridad. Cada llamada
+  GET en `apps/agent/agent/tools.py` (`_resolve_dataset_id`,
+  `get_rule`, `query_gold_results`, `summarize_dataset`,
+  `explain_invoice_result`) ahora pasa por `_get_with_retry()`, mismo
+  patrón que el frontend: reintenta ante un error de
+  conexión/timeout o un 5xx, hasta 2 veces, con backoff corto (0.5s,
+  1s) - nunca ante un 4xx, porque un 404 (ej. "gold todavía no existe"
+  en varias tools de acá) es un estado real del backend, no un blip de
+  red, reintentarlo no cambiaría nada. El `POST` de `run_rule`
+  deliberadamente no pasa por acá - repetir una lectura no tiene efecto
+  secundario, repetir una escritura sí podría. Cubierto por 5 tests
+  nuevos: recupera de un timeout, recupera de un 502, se rinde después
+  de agotar los intentos (sin tragarse el error, mismo shape de
+  respuesta que antes), nunca reintenta un 404, y confirma que el
+  `POST` de `run_rule` se dispara una sola vez incluso cuando falla.

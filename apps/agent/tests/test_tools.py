@@ -224,6 +224,88 @@ def test_run_rule_reports_error_when_not_found(monkeypatch):
     assert result[0]["error"] == "invoice not found"
 
 
+# --- _get_with_retry -------------------------------------------------------
+
+
+def test_get_with_retry_retries_on_timeout_then_succeeds(monkeypatch):
+    """Caso real visto en vivo más de una vez: /healthz respondía en
+    <1s (no estaba dormido) pero la siguiente llamada real daba
+    "timed out" - un reintento simple la resolvía."""
+    monkeypatch.setattr(tools.time, "sleep", lambda s: None)
+    calls = {"n": 0}
+
+    def fake_get(url, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise httpx.TimeoutException("timed out")
+        return FakeResponse({"ok": True})
+
+    monkeypatch.setattr(tools.httpx, "get", fake_get)
+    resp = tools._get_with_retry("http://backend/x")
+    assert resp.json() == {"ok": True}
+    assert calls["n"] == 2
+
+
+def test_get_with_retry_retries_on_5xx_then_succeeds(monkeypatch):
+    monkeypatch.setattr(tools.time, "sleep", lambda s: None)
+    calls = {"n": 0}
+
+    def fake_get(url, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return FakeResponse({"detail": "bad gateway"}, status_code=502)
+        return FakeResponse({"ok": True})
+
+    monkeypatch.setattr(tools.httpx, "get", fake_get)
+    resp = tools._get_with_retry("http://backend/x")
+    assert resp.json() == {"ok": True}
+    assert calls["n"] == 2
+
+
+def test_get_with_retry_gives_up_after_exhausting_attempts(monkeypatch):
+    monkeypatch.setattr(tools.time, "sleep", lambda s: None)
+    calls = {"n": 0}
+
+    def fake_get(url, **kwargs):
+        calls["n"] += 1
+        raise httpx.ConnectError("connection refused")
+
+    monkeypatch.setattr(tools.httpx, "get", fake_get)
+    with pytest.raises(httpx.ConnectError):
+        tools._get_with_retry("http://backend/x", retries=2)
+    assert calls["n"] == 3  # intento original + 2 reintentos, no más
+
+
+def test_get_with_retry_does_not_retry_a_4xx(monkeypatch):
+    """Un 404 (ej. "gold todavía no existe") es un estado real del
+    backend, no un problema de red - reintentarlo no cambiaría nada."""
+    calls = {"n": 0}
+
+    def fake_get(url, **kwargs):
+        calls["n"] += 1
+        return FakeResponse({"detail": "not found"}, status_code=404)
+
+    monkeypatch.setattr(tools.httpx, "get", fake_get)
+    resp = tools._get_with_retry("http://backend/x")
+    assert resp.status_code == 404
+    assert calls["n"] == 1
+
+
+def test_run_rule_does_not_retry_its_post(monkeypatch):
+    """La escritura (POST) nunca debe reintentarse sola - a diferencia
+    de las lecturas de arriba, repetirla sí tendría un efecto real."""
+    calls = {"n": 0}
+
+    def fake_post(url, params=None, timeout=None, **kwargs):
+        calls["n"] += 1
+        raise httpx.TimeoutException("timed out")
+
+    monkeypatch.setattr(tools.httpx, "post", fake_post)
+    result = tools.run_rule.func("item_cuadra", "FAC-1", dataset_id="job-1")
+    assert "error" in result[0]
+    assert calls["n"] == 1
+
+
 # --- _resolve_dataset_id / contexto de sesión -----------------------------
 
 

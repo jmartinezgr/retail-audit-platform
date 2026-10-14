@@ -638,6 +638,32 @@ points, so they keep resolving against the `anonymous` bucket exactly
 as before. Zero behavior change there, by construction, not by a
 special case.
 
+## Retrying transient Render failures
+
+Seen live more than once, not hypothetical: `GET /healthz` answered in
+under a second (the backend wasn't asleep - the uptime monitor keeps it
+warm, see the root README's "Deployment" section), but the very next
+real question still failed with `"couldn't reach the backend: timed
+out"`. Not a cold start - Render's free tier occasionally resets a
+connection or answers slowly under load regardless of whether the
+service is warm, the same behavior already documented and handled on
+the frontend side (`apps/frontend/src/lib/api.ts`'s `request()`
+retries idempotent GETs once or twice with backoff).
+
+The tools never had that safety net - every GET call in `tools.py`
+(`_resolve_dataset_id`, `get_rule`, `query_gold_results`,
+`summarize_dataset`, `explain_invoice_result`) now goes through
+`_get_with_retry()`, the same pattern as the frontend's: retries on a
+connection error/timeout or a 5xx, up to twice, with a short backoff
+(0.5s, 1s) - never on a 4xx (a 404 for "gold isn't ready yet" is a real
+backend state, not a network blip, retrying it would just waste time).
+`run_rule`'s `POST` deliberately isn't retried - repeating a read has
+no side effect, repeating a write might. Covered by five tests: retries
+and recovers from a timeout, retries and recovers from a 502, gives up
+after exhausting attempts (raises/returns the same error shape as
+before, nothing silently swallowed), never retries a 404, and confirms
+`run_rule`'s `POST` fires exactly once even when it fails.
+
 ## Setup
 
 ```bash
@@ -666,7 +692,7 @@ by design, see "Architecture" above.
 python -m pytest -v
 ```
 
-32 tests: unit tests for all six tools (backend mocked at the `httpx`
+37 tests: unit tests for all six tools (backend mocked at the `httpx`
 boundary, Qdrant/embeddings mocked for `search_rule_docs` — same standard
 as `packages/domain`'s 100 tests), the MCP server's tool registration
 (`test_mcp_server.py`, verifies the same 6 tools/names/descriptions are
@@ -689,7 +715,10 @@ race condition described in "Production" above, not a hypothetical
 test), plus three covering the session-scoped dataset context var
 (sends the right `X-Client-Id`, sends none without a session set, and
 stays correct across 8 real concurrent threads — see "Session-scoped
-datasets" above). A separate 6-test suite in
+datasets" above), and five covering `_get_with_retry` (recovers from a
+timeout, recovers from a 502, gives up after exhausting attempts, never
+retries a 404, and confirms `run_rule`'s `POST` is never retried — see
+"Retrying transient Render failures" above). A separate 6-test suite in
 `apps/backend/tests/api/agent/` covers the rate limiter (per-IP window,
 `X-Forwarded-For` parsing, the proxy IP itself never counted) and that
 the incoming `X-Client-Id` header actually reaches `ask()` as

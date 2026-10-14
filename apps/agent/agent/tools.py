@@ -7,6 +7,8 @@ su configuración (decisión tomada explícitamente antes de escribir esto).
 Cada docstring es código funcional, no documentación - el modelo la lee
 para decidir cuándo y cómo llamar la tool."""
 
+import time
+
 import httpx
 from langchain_core.tools import tool
 
@@ -18,6 +20,32 @@ from agent.settings import settings
 class _NoDatasetError(Exception):
     """dataset_id no vino explícito y no se pudo resolver a uno real -
     cada tool decide cómo empacar el mensaje (dict vs list[dict])."""
+
+
+def _get_with_retry(url: str, retries: int = 2, **kwargs) -> httpx.Response:
+    """Mismo patrón que ya usa el frontend (apps/frontend/src/lib/api.ts
+    `request()`) - Render free tier a veces resetea una conexión o
+    responde lento de forma transitoria bajo carga, no por estar
+    dormido (confirmado en vivo más de una vez: `/healthz` respondía en
+    <1s, pero la siguiente llamada real seguía dando "timed out"; un
+    reintento simple la resolvía). Solo GETs, nunca un POST/mutación
+    (ver run_rule, que no usa esto) - repetir una lectura no tiene
+    efecto secundario, repetir una escritura sí podría. Reintenta ante
+    timeout/error de conexión o un 5xx; nunca ante un 4xx (ej. el 404 de
+    "gold todavía no existe" en varias tools de acá), eso es un estado
+    real del backend, no un problema de red."""
+    for attempt in range(retries + 1):
+        try:
+            resp = httpx.get(url, **kwargs)
+        except httpx.HTTPError:
+            if attempt == retries:
+                raise
+            time.sleep(0.5 * (attempt + 1))
+            continue
+        if resp.status_code >= 500 and attempt < retries:
+            time.sleep(0.5 * (attempt + 1))
+            continue
+        return resp
 
 
 def _resolve_dataset_id(dataset_id: str | None) -> str:
@@ -34,7 +62,7 @@ def _resolve_dataset_id(dataset_id: str | None) -> str:
     headers = {"X-Client-Id": sid} if sid else {}
 
     try:
-        resp = httpx.get(f"{settings.BACKEND_BASE_URL}/uploads/?limit=1", headers=headers, timeout=10)
+        resp = _get_with_retry(f"{settings.BACKEND_BASE_URL}/uploads/?limit=1", headers=headers, timeout=10)
         resp.raise_for_status()
         uploads = resp.json()["uploads"]
     except httpx.HTTPError as e:
@@ -69,7 +97,7 @@ def get_rule(rule_id: str) -> dict:
     can't be reached - never guess a rule's definition in that case.
     """
     try:
-        resp = httpx.get(f"{settings.BACKEND_BASE_URL}/rules/", timeout=10)
+        resp = _get_with_retry(f"{settings.BACKEND_BASE_URL}/rules/", timeout=10)
         resp.raise_for_status()
         for regla in resp.json():
             if regla["nombre"] == rule_id:
@@ -78,7 +106,7 @@ def get_rule(rule_id: str) -> dict:
         return {"error": f"couldn't reach the backend to check user-defined rules: {e}"}
 
     try:
-        resp = httpx.get(f"{settings.BACKEND_BASE_URL}/rules/static/{rule_id}", timeout=10)
+        resp = _get_with_retry(f"{settings.BACKEND_BASE_URL}/rules/static/{rule_id}", timeout=10)
         if resp.status_code == 404:
             return {"error": f"no rule named '{rule_id}' exists (checked both built-in and user-defined rules)"}
         resp.raise_for_status()
@@ -133,7 +161,7 @@ def query_gold_results(
         params["regla"] = rule_id
 
     try:
-        resp = httpx.get(f"{settings.BACKEND_BASE_URL}/audits/{dataset_id}/gold/query", params=params, timeout=10)
+        resp = _get_with_retry(f"{settings.BACKEND_BASE_URL}/audits/{dataset_id}/gold/query", params=params, timeout=10)
         if resp.status_code == 404:
             return [{"error": f"dataset '{dataset_id}' has no gold results yet - has the pipeline finished running?"}]
         resp.raise_for_status()
@@ -180,7 +208,7 @@ def summarize_dataset(dataset_id: str | None = None, top_n: int = 5) -> dict:
         return {"error": str(e)}
 
     try:
-        resp = httpx.get(f"{settings.BACKEND_BASE_URL}/audits/{dataset_id}/dashboard", timeout=10)
+        resp = _get_with_retry(f"{settings.BACKEND_BASE_URL}/audits/{dataset_id}/dashboard", timeout=10)
         if resp.status_code == 404:
             return {"error": f"dataset '{dataset_id}' has no gold results yet - has the pipeline finished running?"}
         resp.raise_for_status()
@@ -227,7 +255,7 @@ def explain_invoice_result(invoice_id: str, dataset_id: str | None = None) -> di
         return {"error": str(e)}
 
     try:
-        resp = httpx.get(f"{settings.BACKEND_BASE_URL}/audits/{dataset_id}/factura/{invoice_id}", timeout=10)
+        resp = _get_with_retry(f"{settings.BACKEND_BASE_URL}/audits/{dataset_id}/factura/{invoice_id}", timeout=10)
         resp.raise_for_status()
         data = resp.json()
     except httpx.HTTPError as e:

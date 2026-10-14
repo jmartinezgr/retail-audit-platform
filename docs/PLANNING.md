@@ -802,6 +802,24 @@ con su evidencia medida documentada en `apps/agent/README.md`.
      injection normal) en `apps/agent/README.md`, sección
      "Session-scoped datasets: context propagation, not dependency
      injection".
+   - ✅ Reintento ante timeouts transitorios de Render (2026-10-14):
+     visto en vivo más de una vez, no hipotético - `/healthz` respondía
+     en menos de un segundo (el bot de uptime lo mantiene despierto,
+     ver §9), pero la siguiente pregunta real seguía fallando con
+     "timed out". No era cold-start, era el free tier de Render
+     reseteando una conexión o respondiendo lento de forma transitoria
+     bajo carga - el mismo comportamiento que ya se documentó y manejó
+     del lado del frontend (`lib/api.ts` reintenta GETs idempotentes),
+     pero las tools del agente nunca tuvieron esa red de seguridad.
+     Todas las llamadas GET de `tools.py` ahora pasan por
+     `_get_with_retry()` (mismo patrón: reintenta ante timeout/error de
+     conexión o un 5xx, hasta 2 veces, con backoff corto - nunca ante
+     un 4xx, un 404 de "gold todavía no existe" es un estado real, no
+     un problema de red). El POST de `run_rule` deliberadamente no se
+     reintenta - repetir una lectura no tiene efecto secundario,
+     repetir una escritura sí podría. 5 tests nuevos (37 en total en
+     `apps/agent`). Detalle completo en `apps/agent/README.md`, sección
+     "Retrying transient Render failures".
 
 ## 11. Abierto / por decidir más adelante
 
