@@ -1156,3 +1156,22 @@ React y no puede llamar a `useI18n()`.
   de agotar los intentos (sin tragarse el error, mismo shape de
   respuesta que antes), nunca reintenta un 404, y confirma que el
   `POST` de `run_rule` se dispara una sola vez incluso cuando falla.
+
+  Un segundo hallazgo, distinto, apenas desplegado el reintento:
+  `explain_invoice_result` seguía fallando con "timed out" incluso con
+  el reintento puesto - no pintaba a blip transitorio, así que se midió
+  en vivo en vez de asumir: `GET /audits/{id}/factura/{invoice}` sobre
+  un dataset recién procesado tardó **~15.7s, dos veces seguidas** (no
+  fue caché fría). Ese endpoint hace más trabajo que los demás de este
+  grupo - cabecera, ítems, y cada evaluación de gold para una factura,
+  tres `delta_scan()` separados sobre R2 - y el free tier de Render
+  empujaba eso más allá del timeout de 10s por intento, siempre, no a
+  veces. Reintentar una llamada que consistentemente tarda más que su
+  propio timeout no ayuda - solo falla tres veces en vez de una, que es
+  justo lo que se vio en vivo (dos preguntas reintentadas seguidas,
+  ambas con timeout). Subido el timeout de todas las tools de 10s a 20s
+  (`_TIMEOUT_SECONDS` en `tools.py`, una constante nombrada en vez de un
+  número mágico repetido en cada call site) - margen real sobre los
+  15.7s medidos, confirmado reintentando la misma pregunta en vivo
+  después y obteniendo una respuesta correcta en vez de un tercer
+  timeout.

@@ -818,8 +818,19 @@ con su evidencia medida documentada en `apps/agent/README.md`.
      un problema de red). El POST de `run_rule` deliberadamente no se
      reintenta - repetir una lectura no tiene efecto secundario,
      repetir una escritura sí podría. 5 tests nuevos (37 en total en
-     `apps/agent`). Detalle completo en `apps/agent/README.md`, sección
-     "Retrying transient Render failures".
+     `apps/agent`).
+     - Segundo hallazgo, el mismo día, apenas desplegado lo anterior:
+       `explain_invoice_result` seguía fallando en vivo con las mismas
+       dos preguntas reintentadas seguidas. Medido en vez de asumido -
+       `GET /audits/{id}/factura/{invoice}` sobre un dataset recién
+       procesado tardaba ~15.7s consistentemente (dos veces seguidas,
+       no caché fría) - más que el timeout de 10s por intento, así que
+       el reintento no podía ayudar, solo repetía el mismo fallo. Subido
+       el timeout a 20s (`_TIMEOUT_SECONDS`, una constante en vez de un
+       número repetido en cada tool) - confirmado con la misma pregunta
+       respondida correctamente después, en vivo.
+     Detalle completo en `apps/agent/README.md`, sección "Retrying
+     transient Render failures".
 
 ## 11. Abierto / por decidir más adelante
 

@@ -22,6 +22,17 @@ class _NoDatasetError(Exception):
     cada tool decide cómo empacar el mensaje (dict vs list[dict])."""
 
 
+# No 10 - medido en vivo que `GET /audits/{id}/factura/{invoice}` (el
+# detalle de una factura, usado por explain_invoice_result y run_rule)
+# puede tardar ~15.7s consistentemente en Render free tier para un
+# dataset recién procesado (tres delta_scan() sobre R2 - silver
+# facturas, silver items, gold - no un timeout aislado que el reintento
+# pudiera resolver solo, la misma consulta tardó lo mismo dos veces
+# seguidas). 10s cortaba esa consulta real a la mitad; 20 deja margen
+# real sobre lo medido.
+_TIMEOUT_SECONDS = 20
+
+
 def _get_with_retry(url: str, retries: int = 2, **kwargs) -> httpx.Response:
     """Mismo patrón que ya usa el frontend (apps/frontend/src/lib/api.ts
     `request()`) - Render free tier a veces resetea una conexión o
@@ -62,7 +73,7 @@ def _resolve_dataset_id(dataset_id: str | None) -> str:
     headers = {"X-Client-Id": sid} if sid else {}
 
     try:
-        resp = _get_with_retry(f"{settings.BACKEND_BASE_URL}/uploads/?limit=1", headers=headers, timeout=10)
+        resp = _get_with_retry(f"{settings.BACKEND_BASE_URL}/uploads/?limit=1", headers=headers, timeout=_TIMEOUT_SECONDS)
         resp.raise_for_status()
         uploads = resp.json()["uploads"]
     except httpx.HTTPError as e:
@@ -97,7 +108,7 @@ def get_rule(rule_id: str) -> dict:
     can't be reached - never guess a rule's definition in that case.
     """
     try:
-        resp = _get_with_retry(f"{settings.BACKEND_BASE_URL}/rules/", timeout=10)
+        resp = _get_with_retry(f"{settings.BACKEND_BASE_URL}/rules/", timeout=_TIMEOUT_SECONDS)
         resp.raise_for_status()
         for regla in resp.json():
             if regla["nombre"] == rule_id:
@@ -106,7 +117,7 @@ def get_rule(rule_id: str) -> dict:
         return {"error": f"couldn't reach the backend to check user-defined rules: {e}"}
 
     try:
-        resp = _get_with_retry(f"{settings.BACKEND_BASE_URL}/rules/static/{rule_id}", timeout=10)
+        resp = _get_with_retry(f"{settings.BACKEND_BASE_URL}/rules/static/{rule_id}", timeout=_TIMEOUT_SECONDS)
         if resp.status_code == 404:
             return {"error": f"no rule named '{rule_id}' exists (checked both built-in and user-defined rules)"}
         resp.raise_for_status()
@@ -161,7 +172,7 @@ def query_gold_results(
         params["regla"] = rule_id
 
     try:
-        resp = _get_with_retry(f"{settings.BACKEND_BASE_URL}/audits/{dataset_id}/gold/query", params=params, timeout=10)
+        resp = _get_with_retry(f"{settings.BACKEND_BASE_URL}/audits/{dataset_id}/gold/query", params=params, timeout=_TIMEOUT_SECONDS)
         if resp.status_code == 404:
             return [{"error": f"dataset '{dataset_id}' has no gold results yet - has the pipeline finished running?"}]
         resp.raise_for_status()
@@ -208,7 +219,7 @@ def summarize_dataset(dataset_id: str | None = None, top_n: int = 5) -> dict:
         return {"error": str(e)}
 
     try:
-        resp = _get_with_retry(f"{settings.BACKEND_BASE_URL}/audits/{dataset_id}/dashboard", timeout=10)
+        resp = _get_with_retry(f"{settings.BACKEND_BASE_URL}/audits/{dataset_id}/dashboard", timeout=_TIMEOUT_SECONDS)
         if resp.status_code == 404:
             return {"error": f"dataset '{dataset_id}' has no gold results yet - has the pipeline finished running?"}
         resp.raise_for_status()
@@ -255,7 +266,7 @@ def explain_invoice_result(invoice_id: str, dataset_id: str | None = None) -> di
         return {"error": str(e)}
 
     try:
-        resp = _get_with_retry(f"{settings.BACKEND_BASE_URL}/audits/{dataset_id}/factura/{invoice_id}", timeout=10)
+        resp = _get_with_retry(f"{settings.BACKEND_BASE_URL}/audits/{dataset_id}/factura/{invoice_id}", timeout=_TIMEOUT_SECONDS)
         resp.raise_for_status()
         data = resp.json()
     except httpx.HTTPError as e:
@@ -316,7 +327,7 @@ def run_rule(rule_id: str, invoice_id: str, dataset_id: str | None = None) -> li
         resp = httpx.post(
             f"{settings.BACKEND_BASE_URL}/audits/{dataset_id}/factura/{invoice_id}/run-rule",
             params={"regla": rule_id},
-            timeout=10,
+            timeout=_TIMEOUT_SECONDS,
         )
         if resp.status_code == 404:
             return [{"error": resp.json().get("detail", "not found")}]

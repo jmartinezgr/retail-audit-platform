@@ -664,6 +664,25 @@ after exhausting attempts (raises/returns the same error shape as
 before, nothing silently swallowed), never retries a 404, and confirms
 `run_rule`'s `POST` fires exactly once even when it fails.
 
+**A second, different finding right after deploying the retry fix**:
+testing it live, `explain_invoice_result` kept failing with
+`"timed out"` even with the retry in place - not what a transient blip
+looks like, so measured directly instead of guessing: `curl` against
+`GET /audits/{id}/factura/{invoice}` for a freshly-processed dataset
+took **~15.7s, twice in a row** (not a cold-cache fluke). That endpoint
+does more work than the others it's grouped with here - header, items,
+*and* every gold evaluation for one invoice, three separate
+`delta_scan()` reads over R2 - and Render's free-tier CPU plus R2's own
+latency pushed it past the 10s-per-attempt timeout every single time.
+Retrying a call that consistently takes longer than the timeout doesn't
+help - it just fails the same way three times instead of once, which is
+exactly what was observed (two retried questions in a row, both timing
+out). Bumped every tool's `httpx` timeout from 10s to 20s
+(`_TIMEOUT_SECONDS` in `tools.py`, one named constant instead of a
+magic number repeated at each call site) - comfortable margin over the
+measured 15.7s, confirmed by re-asking the same question live
+afterward and getting a correct answer instead of a third timeout.
+
 ## Setup
 
 ```bash
