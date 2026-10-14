@@ -683,6 +683,32 @@ magic number repeated at each call site) - comfortable margin over the
 measured 15.7s, confirmed by re-asking the same question live
 afterward and getting a correct answer instead of a third timeout.
 
+**A third finding, and the real one underneath the first two**: that
+20s-timeout fix was pushed, the deploy "went live" by every check used
+up to that point (a health-check poll, then several re-tests) - and
+the exact same question kept failing the exact same way anyway, for
+over half an hour. The code was correct (checked it line by line,
+locally and on GitHub). The deploy just hadn't actually happened:
+Render's dashboard showed the live deploy still pinned to an older
+commit - the one with the session-scoping fix, *not* the one with the
+retry logic or the timeout bump - auto-deploy had silently stopped
+triggering on push sometime after that commit, for a reason not
+diagnosed here. A polled `/healthz` or a "ping" question to
+`/agent/ask` can't tell old code from new - both answer the same way
+for a question that doesn't exercise the changed code path. Clicking
+"Manual Deploy" on Render resolved it immediately: the next request
+log showed a real process restart (`Shutting down` →
+`Finished server process` → `Your service is live`), and the exact
+same question that had failed for 30+ minutes now answered correctly
+on the first real try. Confirmed from the actual Render request log,
+not inferred - the session's `X-Client-Id` and the timestamps of three
+manual test questions line up exactly with three logged
+`POST /agent/ask` calls, all `200 OK`, right after that restart.
+**The lesson**: a passing health check proves the process is up, not
+that it's running the commit you think it is - when behavior
+contradicts code you've verified is correct, check the deploy
+dashboard directly instead of re-testing the same request again.
+
 ## Setup
 
 ```bash

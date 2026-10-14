@@ -1175,3 +1175,29 @@ React y no puede llamar a `useI18n()`.
   15.7s medidos, confirmado reintentando la misma pregunta en vivo
   después y obteniendo una respuesta correcta en vez de un tercer
   timeout.
+
+  Un tercer hallazgo, y el real detrás de los otros dos: ese fix del
+  timeout se pusheó, el deploy "quedó arriba" según cada chequeo usado
+  hasta ese momento (un poll de `/healthz`, varios re-intentos reales),
+  y la misma pregunta exacta siguió fallando igual por más de media
+  hora. El código estaba bien (revisado línea por línea, local y en
+  GitHub). El deploy simplemente nunca había pasado: el dashboard de
+  Render mostraba el deploy en vivo todavía clavado en un commit
+  anterior - el de la corrección de sesión, no el del reintento ni el
+  del timeout - el auto-deploy había dejado de dispararse en algún
+  punto después de ese commit, sin diagnosticar la razón exacta acá. Un
+  `/healthz` o una pregunta "ping" a `/agent/ask` no distinguen código
+  viejo de nuevo - ambos responden igual para algo que no ejercita la
+  ruta de código que cambió. Click en "Manual Deploy" en Render lo
+  resolvió de inmediato: el siguiente log de request mostró un reinicio
+  real del proceso (`Shutting down` → `Finished server process` →
+  `Your service is live`), y la misma pregunta que llevaba 30+ minutos
+  fallando respondió bien al primer intento real. Confirmado contra el
+  log real de Render, no inferido - el `X-Client-Id` de la sesión y los
+  timestamps de tres preguntas de prueba coinciden exactamente con tres
+  `POST /agent/ask` logueados, todos `200 OK`, justo después de ese
+  reinicio. **La lección**: un health check en verde prueba que el
+  proceso está vivo, no que corre el commit que uno cree - cuando el
+  comportamiento contradice código ya verificado como correcto, hay que
+  revisar el dashboard de deploys directamente, no reintentar la misma
+  request otra vez.

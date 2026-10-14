@@ -829,6 +829,18 @@ con su evidencia medida documentada en `apps/agent/README.md`.
        el timeout a 20s (`_TIMEOUT_SECONDS`, una constante en vez de un
        número repetido en cada tool) - confirmado con la misma pregunta
        respondida correctamente después, en vivo.
+     - Tercer hallazgo, y el real detrás de los otros dos: ese fix se
+       pusheó, el deploy "quedó arriba" según cada chequeo usado hasta
+       ese momento, y la misma pregunta siguió fallando igual por más
+       de media hora. El código estaba bien (revisado línea por línea).
+       El deploy nunca había pasado de verdad - el dashboard de Render
+       mostraba el auto-deploy clavado en un commit anterior, sin
+       disparar con los pushes siguientes, razón no diagnosticada acá.
+       Un `/healthz` en verde no prueba que corra el commit que uno
+       cree. "Manual Deploy" en Render lo resolvió al toque -
+       confirmado contra el log real (reinicio de proceso visible, y
+       los `POST /agent/ask` logueados coinciden exacto con las
+       preguntas de prueba, por `X-Client-Id` y timestamp).
      Detalle completo en `apps/agent/README.md`, sección "Retrying
      transient Render failures".
 
